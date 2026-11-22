@@ -24,7 +24,7 @@
       "ppm_error": 0.0,
       "bias_tee": false,
       "audio_rate_hz": 16000,
-      "channel_rate_hz": 240000,
+      "channel_rate_hz": 32000,
       "audio_pass_hz": 5000,
       "audio_stop_hz": 6500
     }

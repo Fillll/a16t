@@ -8,6 +8,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 RECEIVER = Path(__file__).resolve().parents[1]
 PROFILES = RECEIVER.parent / "profiles"
@@ -87,6 +89,60 @@ class ReceiverTests(unittest.TestCase):
                         self.assertGreater(2 * math.hypot(sine, cosine) / len(burst), 500)
                     else:
                         self.assertLess(rms(burst), 50)
+
+    @unittest.skipUnless(os.environ.get("A16T_TEST_GNURADIO") == "1",
+                         "opt in with A16T_TEST_GNURADIO=1 and GNU Radio installed")
+    def test_full_marine_profile_receives_simultaneous_fm_calls(self):
+        import numpy as np
+        from gnuradio import blocks, gr
+        from flowgraph import run_graph
+        from receiver import FrameWriter
+
+        profile = load_profile(PROFILES / "marine-vhf.json")
+        group = profile["capture_groups"][0]
+        rf_rate = group["sample_rate_hz"]
+        # Both carriers land on odd-numbered 25 kHz bins, on opposite sides
+        # of the tuner. The other 46 channels, including their neighbors, are quiet.
+        tones = {"marine-66a": 700, "marine-88": 1100}
+        carriers = [(ch["frequency_hz"] - group["center_frequency_hz"], tones[ch["id"]])
+                    for ch in profile["channels"] if ch["id"] in tones]
+        self.assertEqual(len(carriers), 2)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "two-calls.c64"
+            with path.open("wb") as output:
+                for first in range(0, 2 * rf_rate, 65536):
+                    t = (first + np.arange(min(65536, 2 * rf_rate - first))) / rf_rate
+                    signal = np.zeros(len(t), dtype=np.complex128)
+                    for offset, tone in carriers:
+                        phase = 2 * np.pi * offset * t + (2000 / tone) * np.sin(2 * np.pi * tone * t)
+                        signal += 0.25 * np.exp(1j * phase)
+                    signal *= (t >= 0.5) & (t < 1.5)
+                    output.write(signal.astype(np.complex64).tobytes())
+            # Substitute only the USB source so this runs the continuous live
+            # scheduler configuration. The finite RF file sets the test's endpoint.
+            source = blocks.file_source(gr.sizeof_gr_complex, str(path), False)
+            args = SimpleNamespace(mode="live", gain_db=None, squelch_db=-45, duration=None)
+            frames = io.BytesIO()
+            with patch("flowgraph.configure_sdr", return_value=source):
+                run_graph(profile, FrameWriter(frames), args)
+            captured = decode_frames(frames.getvalue())
+
+        self.assertEqual(set(captured), set(range(48)))
+        self.assertEqual(len({len(audio) for audio in captured.values()}), 1)
+        for index, channel in enumerate(profile["channels"]):
+            with self.subTest(channel=channel["id"]):
+                pcm = np.asarray(captured[index], dtype=np.float64)
+                self.assertAlmostEqual(len(pcm), 2 * RATE, delta=RATE // 50)
+                for quiet in (pcm[RATE // 8:RATE // 4], pcm[7 * RATE // 4:]):
+                    self.assertLess(np.sqrt(np.mean(quiet ** 2)), 50)
+                burst = pcm[3 * RATE // 4:5 * RATE // 4]
+                if channel["id"] in tones:
+                    spectrum = 2 * np.abs(np.fft.rfft(burst)) / len(burst)
+                    peak = int(np.argmax(spectrum))
+                    self.assertGreater(spectrum[peak], 500)
+                    self.assertAlmostEqual(peak * RATE / len(burst), tones[channel["id"]], delta=2)
+                else:
+                    self.assertLess(np.sqrt(np.mean(burst ** 2)), 50)
 
 
 if __name__ == "__main__":

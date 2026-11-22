@@ -2,6 +2,14 @@
 
 One tuner supplies one capture window. The receiver extracts each profile channel inside that window, applies RF squelch, demodulates aviation AM or marine narrow FM, and writes mono 16 kHz audio frames. Rust owns activity detection and recording. The [East Bay marine](../profiles/eastbay-marine.json) and [Oakland airband](../profiles/oak-airband.json) profiles are small enough to use for initial bring-up. The larger [marine profile](../profiles/marine-vhf.json) includes digital Channel 70 for visibility; A16T does not decode DSC.
 
+To monitor all 48 Marine VHF channels simultaneously, run the following command with the Python interpreter that provides GNU Radio. Open **Timeline** on the Watchboard to see detections across the profile.
+
+```sh
+cargo run --release --locked -- --mode live --profile profiles/marine-vhf.json --python python3
+```
+
+The full marine profile uses one 2.4 MHz RF capture. Each channel filter decimates to 32 kHz before FM demodulation and 16 kHz audio output. For continuous sessions of 16 or more channels, GNU Radio schedules the channel filters and PCM sinks in multiples of 256 audio samples (16 ms). These larger batches reduce scheduler overhead. To check real-time operation, time the PCM payload from a few live listening endpoints. Each should deliver about 32,000 bytes per second after its 44-byte WAV header. A fresh last-sample timestamp alone can also occur when the radio is losing input.
+
 ## Hardware and receive checks
 
 The live adapter uses GNU Radio 3.10 with its Python modules, gr-soapy, SoapySDR, the RTL-SDR device module, and an RTL-SDR Blog V3 with an antenna. Run these with the same Python that will start the receiver.
