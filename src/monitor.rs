@@ -14,6 +14,9 @@ pub fn now_ms() -> i64 {
         .unwrap_or_default()
         .as_millis() as i64
 }
+fn sample_time_ms(origin_ms: i64, sample: u64) -> i64 {
+    origin_ms + (sample * 1000 / RATE as u64) as i64
+}
 #[derive(Deserialize)]
 pub struct Profile {
     pub id: String,
@@ -35,6 +38,8 @@ pub struct ChannelState {
     pub level: f32,
     pub threshold: f32,
     pub active: bool,
+    pub active_since_ms: Option<i64>,
+    pub active_until_ms: Option<i64>,
     pub last_sample_ms: Option<i64>,
     pub dropped_samples: u64,
 }
@@ -68,6 +73,8 @@ impl App {
                 level: 0.0,
                 threshold: profile.detection.activity_threshold,
                 active: false,
+                active_since_ms: None,
+                active_until_ms: None,
                 last_sample_ms: None,
                 dropped_samples: 0,
             });
@@ -87,12 +94,7 @@ impl App {
         }
     }
     pub fn receiver_status(&self, status: &str) {
-        let mut h = self.health.lock().unwrap();
-        h.receiver = status.to_owned();
-        for ch in &mut h.channels {
-            ch.active = false;
-            ch.level = 0.0;
-        }
+        self.health.lock().unwrap().receiver = status.to_owned();
     }
 }
 
@@ -151,7 +153,7 @@ pub fn receive(
         let rec = Recording {
             channel: ch.id.clone(),
             frequency_hz: ch.frequency_hz,
-            start_ms: base + (segment.start * 1000 / RATE as u64) as i64,
+            start_ms: sample_time_ms(base, segment.start),
             audio: segment.audio,
         };
         if let Err(e) = writer.try_send(rec) {
@@ -199,6 +201,14 @@ pub fn receive(
             let state = &mut h.channels[i];
             state.level = detector.level;
             state.active = detector.active();
+            (state.active_since_ms, state.active_until_ms) = detector
+                .recording_interval()
+                .map(|r| {
+                    let start_ms = sample_time_ms(base, r.start);
+                    let duration_ms = ((r.end - r.start) * 1000).div_ceil(RATE as u64);
+                    (start_ms, start_ms + duration_ms as i64)
+                })
+                .unzip();
             state.last_sample_ms = Some(now_ms());
             state.dropped_samples += gap;
         }
@@ -209,12 +219,55 @@ pub fn receive(
             send(i, epoch.unwrap_or_else(now_ms), segment);
         }
     }
+    for channel in &mut app.health.lock().unwrap().channels {
+        channel.active = false;
+        channel.active_since_ms = None;
+        channel.active_until_ms = None;
+        channel.level = 0.0;
+    }
     result
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn end_of_stream_hands_off_and_clears_a_live_interval() {
+        struct SnapshotAtEof<'a>(&'a App, &'a mut Option<ChannelState>);
+        impl Read for SnapshotAtEof<'_> {
+            fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+                *self.1 = Some(self.0.health.lock().unwrap().channels[0].clone());
+                Ok(0)
+            }
+        }
+        let profile: Profile = serde_json::from_str(
+            r#"{"id":"test","channels":[{"id":"a","label":"A","frequency_hz":156800000}],
+            "detection":{"warmup_sec":0,"min_duration_sec":0.01}}"#,
+        )
+        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let archive = Archive::open(dir.path().to_owned(), false, 0).unwrap();
+        let app = App::new(&profile, "replay".into(), archive);
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        let mut frame = b"A16F".to_vec();
+        frame.extend(0u16.to_le_bytes());
+        frame.extend(320u32.to_le_bytes());
+        frame.extend(0u64.to_le_bytes());
+        frame.extend(4096i16.to_le_bytes().repeat(320));
+        let mut observed = None;
+        let mut stream = frame.as_slice().chain(SnapshotAtEof(&app, &mut observed));
+        receive(&mut stream, &profile, &app, tx).unwrap();
+        let live = observed.unwrap();
+        let recording = rx.try_recv().unwrap();
+        assert_eq!(live.active_since_ms, Some(recording.start_ms));
+        assert_eq!(live.active_until_ms, Some(recording.start_ms + 20));
+        assert_eq!(recording.audio.len(), 320);
+        let state = &app.health.lock().unwrap().channels[0];
+        assert!(!state.active);
+        assert_eq!(state.active_since_ms, None);
+        assert_eq!(state.active_until_ms, None);
+    }
+
     #[test]
     fn distinguish_eof_and_partial_frames() {
         assert!(read_frame(&mut b"".as_slice()).unwrap().is_none());

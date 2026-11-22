@@ -16,6 +16,67 @@ fn store(root: &TempDir, budget: u64) -> Archive {
 }
 
 #[test]
+fn timeline_intersects_the_requested_window_across_sessions_of_one_source() -> Result<()> {
+    let root = TempDir::new()?;
+    let archive = store(&root, u64::MAX);
+    let old = archive.start_session("four", "live")?;
+    let current = archive.start_session("forty-eight", "live")?;
+    let replay = archive.start_session("forty-eight", "replay")?;
+    archive.save(old, "one", 100, 900, &[0; 1600])?; // ends exactly at the left edge
+    let crossing = archive.save(old, "one", 100, 900, &[0; 1601])?;
+    let at_start = archive.save(current, "two", 200, 1000, &[0; 16])?;
+    let at_end = archive.save(current, "three", 300, 1999, &[0; 32])?;
+    archive.save(current, "three", 300, 2000, &[0; 16])?;
+    archive.save(replay, "two", 200, 1000, &[0; 16])?;
+    let partial = archive.save(current, "two", 200, 1200, &[0; 100])?;
+    let writing = archive.save(current, "two", 200, 1300, &[0; 100])?;
+    archive.expire(crossing)?;
+    archive.db()?.execute(
+        "UPDATE clips SET status='incomplete' WHERE id=?1",
+        [partial],
+    )?;
+    archive
+        .db()?
+        .execute("UPDATE clips SET status='recording' WHERE id=?1", [writing])?;
+    let found = archive.transmissions("live", 1000, 2000)?;
+    assert_eq!(
+        found.iter().map(|r| r.id).collect::<Vec<_>>(),
+        [crossing, at_start, at_end]
+    );
+    let first = &found[0];
+    assert_eq!((first.start_ms, first.end_ms), (900, 1001));
+    assert_eq!(
+        (
+            first.channel.as_str(),
+            first.frequency_hz,
+            first.status.as_str()
+        ),
+        ("one", 100, "expired")
+    );
+    assert_eq!(found[1].status, "queued");
+    assert_eq!((found[2].start_ms, found[2].end_ms), (1999, 2001));
+    assert!(archive.transmissions("live", 1000, 1000)?.is_empty());
+    Ok(())
+}
+
+#[test]
+fn busy_timelines_cover_more_than_the_recent_recording_list() -> Result<()> {
+    let root = TempDir::new()?;
+    let archive = store(&root, u64::MAX);
+    let session = archive.start_session("test", "live")?;
+    archive.db()?.execute(
+        "WITH RECURSIVE ticks(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM ticks WHERE n < 250)
+         INSERT INTO clips(session_id, channel, frequency_hz, start_ms, samples, status,
+                           keep_wav, provider, model, transcription_status)
+         SELECT ?1, 'one', 100, n, 16, 'expired', 0, 'none', '', 'disabled' FROM ticks",
+        [session],
+    )?;
+    assert_eq!(archive.recent()?.len(), 200);
+    assert_eq!(archive.transmissions("live", 0, 1000)?.len(), 250);
+    Ok(())
+}
+
+#[test]
 fn interruption_after_wav_write_recovers_one_playable_clip() -> Result<()> {
     let root = TempDir::new()?;
     let archive = store(&root, u64::MAX);

@@ -20,9 +20,12 @@ A bounded recording queue separates file writes from capture. When it fills, the
 | Request | Result |
 | --- | --- |
 | `GET /` | Static Watchboard |
-| `GET /api/state` | Active profile, source, receiver state, per-channel levels, latest sample times, drop counts, archive errors, and recent recordings |
+| `GET /api/state` | Active profile, source, receiver state, per-channel levels, latest sample times, confirmed live intervals, drop counts, archive errors, and recent recordings |
+| `GET /api/timeline` | Profile, source, rolling-hour bounds (`start_ms`, `end_ms`) and every archived transmission overlapping those bounds on a configured channel and frequency |
 | `GET /events` | Server-Sent Events. Each named `state` event contains a complete snapshot, including the initial event. |
 | `GET /api/listen/{channel}` | Live signed 16-bit mono PCM at 16 kHz in a streaming WAV container |
 | `GET /api/clips/{id}/audio` | Playable archived audio, or HTTP 404 when unavailable or expired |
 
 The default bind is loopback. This local HTTP interface includes recorded audio and transcripts and has no authentication. The core library has no dependency on the Watchboard lifecycle. A native client can use this API.
+
+Timeline timestamps are Unix milliseconds with an exclusive end. Each archived transmission carries its clip ID, channel ID, frequency in Hz, original start and end, and archive status. The query includes earlier sessions in this archive that match the running source, channel ID and frequency, even across profile changes. Expired audio retains its interval. Clients clip bars to the requested window. The channel fields `active_since_ms` and `active_until_ms` describe confirmed audio still being captured and are null otherwise. They use the same sample clock as the archived clip.

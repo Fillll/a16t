@@ -1,4 +1,4 @@
-use crate::monitor::App;
+use crate::monitor::{App, now_ms};
 use axum::{
     Json, Router,
     body::Body,
@@ -12,7 +12,7 @@ use axum::{
 };
 use bytes::Bytes;
 use serde_json::{Value, json};
-use std::{convert::Infallible, time::Duration};
+use std::{collections::HashMap, convert::Infallible, time::Duration};
 use tokio::sync::broadcast::error::RecvError;
 
 async fn snapshot(app: &App) -> Result<Value, String> {
@@ -35,6 +35,42 @@ async fn state(State(app): State<App>) -> Response {
             StatusCode::SERVICE_UNAVAILABLE.into_response()
         }
     }
+}
+async fn timeline(State(app): State<App>) -> Response {
+    let end_ms = now_ms();
+    let start_ms = end_ms - 3_600_000;
+    let archive = app.archive.clone();
+    let source = app.source.clone();
+    let result =
+        tokio::task::spawn_blocking(move || archive.transmissions(&source, start_ms, end_ms)).await;
+    let mut transmissions = match result {
+        Ok(Ok(rows)) => rows,
+        Ok(Err(error)) => {
+            eprintln!("Timeline read failed: {error}");
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        }
+        Err(error) => {
+            eprintln!("Timeline worker failed: {error}");
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        }
+    };
+    let channels: HashMap<_, _> = app
+        .health
+        .lock()
+        .unwrap()
+        .channels
+        .iter()
+        .map(|ch| (ch.id.clone(), ch.frequency_hz))
+        .collect();
+    transmissions.retain(|tx| channels.get(&tx.channel) == Some(&tx.frequency_hz));
+    (
+        [(header::CACHE_CONTROL, "no-store")],
+        Json(
+            json!({"profile":app.profile,"source":app.source,"start_ms":start_ms,"end_ms":end_ms,
+            "transmissions":transmissions}),
+        ),
+    )
+        .into_response()
 }
 async fn events(State(app): State<App>) -> impl IntoResponse {
     Sse::new(async_stream::stream! {
@@ -133,7 +169,26 @@ pub fn router(app: App) -> Router {
                 )
             }),
         )
+        .route(
+            "/timeline.js",
+            get(|| async {
+                (
+                    [(header::CONTENT_TYPE, "text/javascript")],
+                    include_str!("../web/timeline.js"),
+                )
+            }),
+        )
+        .route(
+            "/timeline.css",
+            get(|| async {
+                (
+                    [(header::CONTENT_TYPE, "text/css")],
+                    include_str!("../web/timeline.css"),
+                )
+            }),
+        )
         .route("/api/state", get(state))
+        .route("/api/timeline", get(timeline))
         .route("/events", get(events))
         .route("/api/clips/{id}/audio", get(clip))
         .route("/api/listen/{channel}", get(listen))

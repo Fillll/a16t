@@ -14,6 +14,8 @@ cargo run --locked -- --mode replay
 
 Open [the Watchboard](http://127.0.0.1:8787). Over 6.5 seconds the built-in replay sends one tone burst followed by a click. The burst should yield one playable clip on East Bay Channel 14. The isolated click should yield none. The Watchboard stays open when the replay finishes. Screen updates and clip playback require no third-party servers.
 
+Open **Timeline** to see when each channel in the selected profile was active over the last hour. Select a transmission to inspect its timing and play its audio.
+
 To run the same check without a browser and exit after the archive finishes:
 
 ```sh

@@ -52,6 +52,16 @@ pub struct Clip {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct Transmission {
+    pub id: i64,
+    pub channel: String,
+    pub frequency_hz: u64,
+    pub start_ms: i64,
+    pub end_ms: i64,
+    pub status: String,
+}
+
 impl Archive {
     pub fn open(root: PathBuf, keep_wav: bool, budget_bytes: u64) -> Result<Self> {
         let speech = Speech::from_env()?;
@@ -109,6 +119,7 @@ impl Archive {
                 retained_bytes INTEGER NOT NULL DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS clips_time ON clips(start_ms DESC, id DESC);
+            CREATE INDEX IF NOT EXISTS clips_end_time ON clips(start_ms + (samples + 15) / 16);
             CREATE INDEX IF NOT EXISTS clips_status ON clips(status, id);
         ",
         )?;
@@ -383,6 +394,41 @@ impl Archive {
                     transcription_status: r.get(10)?,
                     transcript: r.get(11)?,
                     error: r.get(12)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Captures from this source intersecting [start_ms, end_ms), including expired audio.
+    pub fn transmissions(
+        &self,
+        source: &str,
+        start_ms: i64,
+        end_ms: i64,
+    ) -> Result<Vec<Transmission>> {
+        if start_ms >= end_ms {
+            return Ok(Vec::new());
+        }
+        let db = self.db()?;
+        // 16 samples per millisecond. Round the exclusive endpoint up for a partial millisecond.
+        // Ordering by this indexed endpoint also skips old clips in long-running archives.
+        let mut stmt = db.prepare(
+            "SELECT c.id, c.channel, c.frequency_hz, c.start_ms,
+                    c.start_ms + (c.samples + 15) / 16 AS end_ms, c.status
+             FROM clips c JOIN sessions s ON s.id = c.session_id
+             WHERE end_ms > ?2 AND c.start_ms < ?3 AND s.source = ?1
+               AND c.samples > 0 AND c.status NOT IN ('recording', 'incomplete')
+             ORDER BY end_ms, c.id",
+        )?;
+        Ok(stmt
+            .query_map((source, start_ms, end_ms), |r| {
+                Ok(Transmission {
+                    id: r.get(0)?,
+                    channel: r.get(1)?,
+                    frequency_hz: r.get(2)?,
+                    start_ms: r.get(3)?,
+                    end_ms: r.get(4)?,
+                    status: r.get(5)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?)

@@ -8,11 +8,17 @@
   <title>A16T · Watchboard</title>
   <link rel="icon" type="image/svg+xml" sizes="any" href="/a16t-mark.svg">
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/timeline.css">
+  <script src="/timeline.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
   <header class="masthead">
     <div class="brand"><img src="/a16t-mark.svg" width="32" height="32" alt="">A16T</div>
+    <nav class="view-nav" aria-label="Monitor views">
+      <a href="#watchboard" id="watchboard-link" aria-current="page">Watchboard</a>
+      <a href="#timeline" id="timeline-link">Timeline</a>
+    </nav>
     <div class="mast-details"><span id="connection" role="status">Connecting</span><time id="clock">UTC</time></div>
   </header>
   <main>
@@ -25,7 +31,7 @@
       </dl>
     </section>
     <p class="archive-warning" id="archive-warning" role="status" hidden></p>
-    <div class="workspace">
+    <div class="workspace" id="watchboard-view">
       <section class="channels" aria-labelledby="channels-heading">
         <div class="section-head"><h2 id="channels-heading">Channels</h2><span class="count" id="channel-count">—</span></div>
         <div class="large-controls" id="channel-filter-wrap" hidden><label for="channel-filter">Find channel</label><input id="channel-filter" type="search" placeholder="Name or frequency" autocomplete="off"></div>
@@ -57,6 +63,7 @@
         </section>
       </section>
     </div>
+    <section id="timeline-view" aria-labelledby="title" hidden></section>
   </main>
 </body>
 </html>

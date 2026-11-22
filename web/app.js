@@ -19,6 +19,7 @@ let fetching = false;
 let initialRequestFailed = false;
 let streamReady = false;
 let revision = 0;
+let timelineVisible = false;
 
 function element(tag, name, content) {
   const node = document.createElement(tag);
@@ -77,8 +78,11 @@ function applySnapshot(state) {
   if (state.dropped_clips) archiveWarning.push(state.dropped_clips + (state.dropped_clips === 1 ? " dropped recording" : " dropped recordings"));
   if (state.archive_error) archiveWarning.push(state.archive_error);
   note($("archive-warning"), archiveWarning.join(" · "));
-  renderChannels();
-  renderClips();
+  if (timelineVisible) window.a16tTimeline.update(state);
+  else {
+    renderChannels();
+    renderClips();
+  }
   updateConnection();
 }
 
@@ -372,6 +376,32 @@ async function refresh() {
   }
 }
 
+function selectView() {
+  timelineVisible = location.hash === "#timeline";
+  const title = timelineVisible ? "Timeline" : "Watchboard";
+  setText($("title"), title);
+  document.title = "A16T · " + title;
+  $("watchboard-view").hidden = timelineVisible;
+  $("timeline-view").hidden = !timelineVisible;
+  for (const name of ["Timeline", "Watchboard"]) {
+    const link = $(name.toLowerCase() + "-link");
+    if (name === title) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  }
+  if (timelineVisible) {
+    stopListening();
+    $("clip-audio").pause();
+    window.a16tTimeline.show(snapshot);
+  } else {
+    window.a16tTimeline.hide();
+    if (snapshot) {
+      renderChannels();
+      renderClips();
+    }
+  }
+}
+window.addEventListener("hashchange", selectView);
+selectView();
 $("channel-filter").addEventListener("input", renderChannels);
 $("listen").addEventListener("click", listen);
 $("clip-audio").addEventListener("error", () => {
@@ -403,7 +433,7 @@ function tick() {
     streamReady = false;
     refresh();
   }
-  if (snapshot) renderChannels();
+  if (snapshot && !timelineVisible) renderChannels();
 }
 tick();
 setInterval(tick, 1000);

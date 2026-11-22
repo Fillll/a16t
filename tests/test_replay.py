@@ -20,12 +20,13 @@ HTTP = build_opener(ProxyHandler({}))
 
 
 @contextmanager
-def run_receiver(archive):
+def run_receiver(archive, profile="eastbay-marine"):
     log_path = archive / "receiver.log"
     with log_path.open("w") as log:
         process = subprocess.Popen(
             [str(BINARY), "--mode", "replay", "--bind", "127.0.0.1:0",
-             "--python", sys.executable, "--data-dir", str(archive)],
+             "--python", sys.executable, "--data-dir", str(archive),
+             "--profile", str(ROOT / "profiles" / (profile + ".json"))],
             cwd=ROOT, env={**os.environ, "A16T_TRANSCRIPTION_PROVIDER": "none"},
             stdout=log, stderr=log,
         )
@@ -108,6 +109,17 @@ class ReplayTest(unittest.TestCase):
                 self.assertGreater(clip["session_id"], 0)
                 self.assertEqual(clip["transcription_status"], "disabled")
                 self.assertEqual(state["dropped_clips"], 0)
+                with HTTP.open(base + "/api/timeline", timeout=4) as response:
+                    timeline = json.load(response)
+                self.assertEqual(timeline["end_ms"] - timeline["start_ms"], 3_600_000)
+                self.assertEqual((timeline["profile"], timeline["source"]), (first["profile"], "replay"))
+                self.assertEqual(len(timeline["transmissions"]), 1)
+                event = timeline["transmissions"][0]
+                self.assertEqual(event["id"], clip["id"])
+                self.assertEqual(event["channel"], clip["channel"])
+                self.assertEqual(event["start_ms"], clip["start_ms"])
+                self.assertAlmostEqual(event["end_ms"] - event["start_ms"], clip["duration_ms"], delta=1)
+                self.assertEqual(event["status"], "ready")
                 for row in state["channels"]:
                     self.assertIsNotNone(row["last_sample_ms"])
                     self.assertEqual(row["dropped_samples"], 0)
@@ -125,12 +137,20 @@ class ReplayTest(unittest.TestCase):
                 self.assertTrue(any(decoded))
                 self.assertAlmostEqual(len(decoded) / 32, clip["duration_ms"], delta=2)
 
-            with run_receiver(archive) as base:
+            with run_receiver(archive, "marine-vhf") as base:
                 # The second synthetic session starts with silence. The completed clip
-                # belongs to the first session and can be played immediately.
-                self.assertEqual(fetch_state(base)["clips"], [clip])
+                # is on a channel shared by both profiles and can be played immediately.
+                state = fetch_state(base)
+                self.assertEqual(len(state["channels"]), 48)
+                self.assertEqual(state["clips"], [clip])
+                with HTTP.open(base + "/api/timeline", timeout=4) as response:
+                    self.assertEqual(json.load(response)["transmissions"], [event])
                 with HTTP.open(base + clip_path, timeout=4) as response:
                     self.assertEqual(response.read(), opus)
+
+            with run_receiver(archive, "noaa-weather") as base:
+                with HTTP.open(base + "/api/timeline", timeout=4) as response:
+                    self.assertEqual(json.load(response)["transmissions"], [])
 
 
 if __name__ == "__main__":

@@ -73,6 +73,15 @@ impl Detector {
     pub fn active(&self) -> bool {
         self.current.is_some()
     }
+    /// Sample range of the open recording once it qualifies for archiving.
+    pub fn recording_interval(&self) -> Option<std::ops::Range<u64>> {
+        let candidate = self.current.as_ref()?;
+        if candidate.voiced < count(self.settings.min_duration_sec) {
+            return None;
+        }
+        let clip = &candidate.clip;
+        Some(clip.start..clip.start + clip.audio.len() as u64)
+    }
     pub fn feed(&mut self, first: u64, mut samples: &[i16]) -> Vec<Segment> {
         let mut clips = Vec::new();
         let mut next = first;
@@ -161,6 +170,36 @@ impl Detector {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn live_interval_tracks_only_confirmed_recordings_and_matches_the_saved_clip() {
+        let mut detector = Detector::new(Settings {
+            warmup_sec: 0.0,
+            min_duration_sec: 0.03,
+            pre_roll_sec: 0.02,
+            hang_sec: 0.02,
+            ..Settings::default()
+        });
+        let quiet = [0; 3 * WINDOW];
+        detector.feed(0, &quiet);
+        let mut offset = quiet.len() as u64;
+        for _ in 0..2 {
+            detector.feed(offset, &[4096; WINDOW]);
+            offset += WINDOW as u64;
+            assert!(detector.active());
+            assert_eq!(detector.recording_interval(), None);
+        }
+        detector.feed(offset, &[4096; WINDOW]);
+        offset += WINDOW as u64;
+        let start = WINDOW as u64;
+        assert_eq!(detector.recording_interval(), Some(start..offset));
+        detector.feed(offset, &[0; WINDOW]);
+        offset += WINDOW as u64;
+        assert_eq!(detector.recording_interval(), Some(start..offset));
+        let recording = detector.flush().unwrap();
+        assert_eq!(recording.start, start);
+        assert_eq!(recording.audio.len() as u64, offset - start);
+        assert_eq!(detector.recording_interval(), None);
+    }
     #[test]
     fn pre_roll_and_tail_do_not_turn_a_click_into_a_call() {
         let mut detector = Detector::new(Settings::default());
