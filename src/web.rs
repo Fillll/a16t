@@ -107,6 +107,15 @@ pub fn router(app: App) -> Router {
             get(|| async { Html(include_str!("../web/index.html")) }),
         )
         .route(
+            "/a16t-mark.svg",
+            get(|| async {
+                (
+                    [(header::CONTENT_TYPE, "image/svg+xml")],
+                    include_str!("../web/a16t-mark.svg"),
+                )
+            }),
+        )
+        .route(
             "/app.js",
             get(|| async {
                 (

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="#1a1c1f">
+  <title>A16T</title>
+  <style>
+    @media (prefers-color-scheme: dark) {
+      svg { fill: #ffffff; }
+      .channel { fill: #65d0d7; }
+    }
+  </style>
+  <rect x="1" y="3" width="10" height="2"/>
+  <rect class="channel" x="1" y="7" width="14" height="2" fill="#087f8c"/>
+  <rect x="1" y="11" width="10" height="2"/>
+</svg>

@@ -6,4 +6,6 @@ Select a channel to inspect its latest audio level, detection threshold, last sa
 
 **Listen live** reads the selected channel’s 16 kHz mono PCM stream. Web Audio schedules arriving samples for low-latency playback. The activity detector controls recording independently of listening. Playing a saved clip stops live listening, and selecting a different channel ends the previous stream. A clip retains the profile and acquisition source recorded at capture. The selected recording shows its UTC start time, frequency, source, transcript, and audio player.
 
-The Rust executable serves embedded HTML, CSS, and JavaScript. System fonts and local assets keep the interface available offline.
+The Watchboard header, browser tab, and repository README share the [A16T mark](../web/a16t-mark.svg). Its longer teal center bar represents an active channel. The SVG uses a 16-pixel grid and adapts to light and dark backgrounds.
+
+The Rust executable serves embedded HTML, CSS, JavaScript, and the logo. System fonts and local assets keep the interface available offline.
