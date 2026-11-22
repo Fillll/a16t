@@ -38,6 +38,8 @@ On the Watchboard, select a channel and press **Listen live**. The meter, detect
 cargo run --release --locked -- --mode live --profile profiles/noaa-weather.json --duration 20 --once
 ```
 
+For Bay Area aviation, start with `profiles/sfo-oak-towers.json` to hear SFO Tower and Oakland North Tower together. Presets also cover ground control at both airports and Oakland South Tower. [San Francisco and Oakland airband profiles](documentation/receiver.md#san-francisco-and-oakland-airband)
+
 The archive in `runtime_data/` holds 20 kbit/s Opus audio, SQLite metadata and optional transcripts. The default audio retention budget is 512 MiB. Use `--keep-wav` to retain original PCM for debugging. Transcription is disabled by default. [Storage and transcription](documentation/storage.md) · [Live radio and IQ replay](documentation/receiver.md)
 
 ## Develop

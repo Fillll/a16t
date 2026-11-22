@@ -10,6 +10,22 @@ cargo run --release --locked -- --mode live --profile profiles/marine-vhf.json -
 
 The full marine profile uses one 2.4 MHz RF capture. Each channel filter decimates to 32 kHz before FM demodulation and 16 kHz audio output. For continuous sessions of 16 or more channels, GNU Radio schedules the channel filters and PCM sinks in multiples of 256 audio samples (16 ms). These larger batches reduce scheduler overhead. To check real-time operation, time the PCM payload from a few live listening endpoints. Each should deliver about 32,000 bytes per second after its 44-byte WAV header. A fresh last-sample timestamp alone can also occur when the radio is losing input.
 
+## San Francisco and Oakland airband
+
+Start with the shared tower profile to hear SFO Tower and Oakland North Tower simultaneously. Oakland South Tower uses 127.200 MHz, 6.700 MHz above SFO Tower. Hearing both at once would require more than the 2.4 MHz window used by these RTL-SDR profiles. Choose one row for each live session. All channels in that row are monitored together.
+
+| Profile | Channels (MHz) |
+| --- | --- |
+| [SFO and Oakland towers](../profiles/sfo-oak-towers.json) | **120.500** SFO Tower, **118.300** Oakland North Tower, **118.200** SFO clearance delivery |
+| [SFO and Oakland ground](../profiles/sfo-oak-ground.json) | **121.800** SFO Ground, **121.750** Oakland South Ground, **121.900** Oakland North Ground, **121.100** Oakland clearance delivery, **120.500** SFO Tower |
+| [Oakland tower and approach](../profiles/oak-airband.json) | **127.200** Oakland South Tower (runway 12/30), **124.900** additional Oakland Tower frequency, **125.350** NorCal Approach East, **127.000** NorCal Approach North |
+
+The presets cover controller and pilot communications. The FAA airport diagrams list tower, ground and clearance assignments. The Oakland Chart Supplement also lists 124.900 MHz without a runway assignment. The terminal area chart identifies the Oakland approach sectors. [FAA SFO airport diagram](https://aeronav.faa.gov/d-tpp/2611/00375AD.PDF) · [FAA Oakland airport diagram](https://aeronav.faa.gov/d-tpp/2611/00294AD.PDF) · [FAA Oakland Chart Supplement, p. 224](https://aeronav.faa.gov/Upload_313-d/supplements/CS_SW_20261029.pdf#page=226) · [FAA San Francisco terminal area chart](https://aeronav.faa.gov/visual/10-29-2026/PDFs/San_Francisco_TAC.pdf#page=1)
+
+```sh
+cargo run --release --locked -- --mode live --profile profiles/sfo-oak-towers.json --python python3
+```
+
 ## Hardware and receive checks
 
 The live adapter uses GNU Radio 3.10 with its Python modules, gr-soapy, SoapySDR, the RTL-SDR device module, and an RTL-SDR Blog V3 with an antenna. Run these with the same Python that will start the receiver.

@@ -1,0 +1,56 @@
+{
+  "id": "sfo-oak-ground",
+  "label": "SFO and Oakland Ground",
+  "domain": "aviation",
+  "description": "Primary ground control at San Francisco, both Oakland ground positions, Oakland clearance delivery and San Francisco Tower.",
+  "capture_groups": [
+    {
+      "id": "sfo-oak-surface",
+      "device_kind": "rtlsdr_v3",
+      "center_frequency_hz": 121200000,
+      "sample_rate_hz": 2400000
+    }
+  ],
+  "channels": [
+    {
+      "id": "sfo-ground-121800",
+      "label": "SFO Ground",
+      "frequency_hz": 121800000,
+      "modulation": "am",
+      "capture_group_id": "sfo-oak-surface",
+      "description": "San Francisco International ground control"
+    },
+    {
+      "id": "oak-ground-121750",
+      "label": "Oakland Ground South",
+      "frequency_hz": 121750000,
+      "modulation": "am",
+      "capture_group_id": "sfo-oak-surface",
+      "description": "Oakland south field ground control for runway 12/30"
+    },
+    {
+      "id": "oak-ground-121900",
+      "label": "Oakland Ground North",
+      "frequency_hz": 121900000,
+      "modulation": "am",
+      "capture_group_id": "sfo-oak-surface",
+      "description": "Oakland north field ground control for runways 10L/28R, 10R/28L and 15/33"
+    },
+    {
+      "id": "oak-clearance-121100",
+      "label": "Oakland Clearance",
+      "frequency_hz": 121100000,
+      "modulation": "am",
+      "capture_group_id": "sfo-oak-surface",
+      "description": "Oakland clearance delivery"
+    },
+    {
+      "id": "sfo-tower-120500",
+      "label": "SFO Tower",
+      "frequency_hz": 120500000,
+      "modulation": "am",
+      "capture_group_id": "sfo-oak-surface",
+      "description": "San Francisco International tower"
+    }
+  ]
+}

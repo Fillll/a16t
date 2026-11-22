@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+New airband profiles cover SFO Tower and Oakland North Tower together, and ground control at both airports. The Oakland airband profile adds the published 124.900 MHz tower frequency and corrects the 125.350 MHz approach label to East.
+
 The Watchboard now includes a rolling one-hour timeline for every channel in the active profile, with live activity and playback of archived transmissions.
 
 The compact timeline uses a thin line for each channel and colored drops for transmission types. Hover or keyboard focus reveals the call details and transcript preview. Priority types come from recognized signals in the transcript, and routine channel-based labels identify their source.

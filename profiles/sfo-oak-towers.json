@@ -1,0 +1,40 @@
+{
+  "id": "sfo-oak-towers",
+  "label": "SFO Tower and Oakland North Tower",
+  "domain": "aviation",
+  "description": "San Francisco Tower, Oakland North Tower and San Francisco clearance delivery in one AM capture window.",
+  "capture_groups": [
+    {
+      "id": "sfo-oak-low",
+      "device_kind": "rtlsdr_v3",
+      "center_frequency_hz": 119350000,
+      "sample_rate_hz": 2400000
+    }
+  ],
+  "channels": [
+    {
+      "id": "sfo-tower-120500",
+      "label": "SFO Tower",
+      "frequency_hz": 120500000,
+      "modulation": "am",
+      "capture_group_id": "sfo-oak-low",
+      "description": "San Francisco International tower"
+    },
+    {
+      "id": "oak-tower-118300",
+      "label": "Oakland Tower North",
+      "frequency_hz": 118300000,
+      "modulation": "am",
+      "capture_group_id": "sfo-oak-low",
+      "description": "Oakland north field tower for runways 10L/28R, 10R/28L and 15/33"
+    },
+    {
+      "id": "sfo-clearance-118200",
+      "label": "SFO Clearance",
+      "frequency_hz": 118200000,
+      "modulation": "am",
+      "capture_group_id": "sfo-oak-low",
+      "description": "San Francisco International clearance delivery"
+    }
+  ]
+}
