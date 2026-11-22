@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#101718">
+  <title>A16T · Watchboard</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="brand" aria-label="A16T"><span class="radio-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>A16T</div>
+    <div class="mast-details"><span id="connection" role="status">Connecting</span><time id="clock">UTC</time></div>
+  </header>
+  <main>
+    <section class="overview" aria-labelledby="title">
+      <h1 id="title">Watchboard</h1>
+      <dl class="overview-data">
+        <div><dt>Profile</dt><dd id="profile">—</dd></div>
+        <div><dt>Source</dt><dd id="source">—</dd></div>
+        <div><dt>Receiver</dt><dd id="receiver">—</dd></div>
+      </dl>
+    </section>
+    <p class="archive-warning" id="archive-warning" role="status" hidden></p>
+    <div class="workspace">
+      <section class="channels" aria-labelledby="channels-heading">
+        <div class="section-head"><h2 id="channels-heading">Channels</h2><span class="count" id="channel-count">—</span></div>
+        <div class="large-controls" id="channel-filter-wrap" hidden><label for="channel-filter">Find channel</label><input id="channel-filter" type="search" placeholder="Name or frequency" autocomplete="off"></div>
+        <div class="channel-header" aria-hidden="true"><span>Channel / MHz</span><span>Audio level</span><span>State</span></div>
+        <div class="channel-list" id="channel-list" aria-label="Monitored channels"></div>
+        <p class="empty" id="channel-empty">Waiting for receiver data.</p>
+        <section class="inspector" id="inspector" aria-labelledby="selected-name" hidden>
+          <div class="inspector-head"><div><p class="eyebrow">Selected channel</p><h3 id="selected-name">—</h3></div><button class="listen-button" id="listen" type="button" aria-pressed="false">Listen live</button></div>
+          <dl class="metrics">
+            <div><dt>Audio level</dt><dd id="selected-level">—</dd></div>
+            <div><dt>Threshold</dt><dd id="selected-threshold">—</dd></div>
+            <div><dt>Last sample</dt><dd id="selected-last">—</dd></div>
+            <div><dt>Adapter gap samples</dt><dd id="selected-dropped">—</dd></div>
+          </dl>
+          <p class="audio-message" id="listen-message" role="status" hidden></p>
+        </section>
+      </section>
+      <section class="archive" aria-labelledby="recordings-heading">
+        <div class="section-head"><h2 id="recordings-heading">Recent recordings</h2><span class="count" id="clip-count">—</span></div>
+        <div class="clip-list" id="clip-list" aria-label="Recent recordings"></div>
+        <p class="empty" id="clip-empty">Waiting for recording history.</p>
+        <section class="clip-detail" id="clip-detail" aria-labelledby="clip-title" hidden>
+          <div class="detail-head"><p class="eyebrow">Selected recording</p><span class="status" id="clip-status"></span></div>
+          <h3 id="clip-title">—</h3><p class="clip-metadata" id="clip-metadata"></p>
+          <audio id="clip-audio" controls preload="none" aria-label="Selected recording"></audio>
+          <p class="audio-message" id="clip-info" hidden></p>
+          <p class="audio-message" id="clip-message" role="status" hidden></p>
+          <div class="transcript"><p class="eyebrow">Transcript</p><p id="clip-text"></p></div>
+        </section>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

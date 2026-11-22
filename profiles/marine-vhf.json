@@ -1,0 +1,418 @@
+{
+  "id": "marine-vhf",
+  "label": "Marine VHF Lower Band",
+  "domain": "marine",
+  "description": "Marine VHF receive-only profile for U.S. lower-band voice, DSC, and ship-side channels that fit inside one RTL-SDR capture window centered near Channel 16. NOAA weather, AIS, and upper duplex coast-side frequencies need another capture window or profile.",
+  "transcription_prompt": "Marine VHF radio. Expect vessel names, channel numbers, position reports, Mayday, Pan-pan, Securite, weather, bridge-to-bridge, marina, harbor, and coast guard traffic.",
+  "detection": {
+    "activity_threshold": 0.0025,
+    "warmup_sec": 2.0,
+    "threshold_multiplier": 8.0,
+    "noise_floor_alpha": 0.03,
+    "pre_roll_sec": 0.75,
+    "min_duration_sec": 0.35,
+    "hang_sec": 0.8,
+    "max_duration_sec": 45.0
+  },
+  "capture_groups": [
+    {
+      "id": "marine-core",
+      "device_kind": "rtlsdr_v3",
+      "center_frequency_hz": 156800000,
+      "sample_rate_hz": 2400000,
+      "gain_db": 28.0,
+      "ppm_error": 0.0,
+      "bias_tee": false,
+      "audio_rate_hz": 16000,
+      "channel_rate_hz": 240000,
+      "audio_pass_hz": 5000,
+      "audio_stop_hz": 6500
+    }
+  ],
+  "channels": [
+    {
+      "id": "marine-16",
+      "label": "Channel 16",
+      "frequency_hz": 156800000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "International distress, safety, and calling"
+    },
+    {
+      "id": "marine-1a",
+      "label": "Channel 1A",
+      "frequency_hz": 156050000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Port operations and commercial; VTS in limited U.S. areas"
+    },
+    {
+      "id": "marine-5a",
+      "label": "Channel 5A",
+      "frequency_hz": 156250000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Port operations or VTS in selected U.S. areas"
+    },
+    {
+      "id": "marine-6",
+      "label": "Channel 6",
+      "frequency_hz": 156300000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Intership safety"
+    },
+    {
+      "id": "marine-7a",
+      "label": "Channel 7A",
+      "frequency_hz": 156350000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Commercial"
+    },
+    {
+      "id": "marine-8",
+      "label": "Channel 8",
+      "frequency_hz": 156400000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Commercial intership"
+    },
+    {
+      "id": "marine-9",
+      "label": "Channel 9",
+      "frequency_hz": 156450000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Boater calling, commercial, and non-commercial"
+    },
+    {
+      "id": "marine-10",
+      "label": "Channel 10",
+      "frequency_hz": 156500000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Commercial"
+    },
+    {
+      "id": "marine-11",
+      "label": "Channel 11",
+      "frequency_hz": 156550000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Commercial; VTS in selected areas"
+    },
+    {
+      "id": "marine-12",
+      "label": "Channel 12",
+      "frequency_hz": 156600000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Port operations; VTS in selected areas"
+    },
+    {
+      "id": "marine-13",
+      "label": "Channel 13",
+      "frequency_hz": 156650000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Bridge-to-bridge navigation safety"
+    },
+    {
+      "id": "marine-14",
+      "label": "Channel 14",
+      "frequency_hz": 156700000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Port operations; VTS in selected areas"
+    },
+    {
+      "id": "marine-15",
+      "label": "Channel 15",
+      "frequency_hz": 156750000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Receive-only environmental channel"
+    },
+    {
+      "id": "marine-17",
+      "label": "Channel 17",
+      "frequency_hz": 156850000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "State and local government maritime control"
+    },
+    {
+      "id": "marine-18a",
+      "label": "Channel 18A",
+      "frequency_hz": 156900000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Commercial"
+    },
+    {
+      "id": "marine-19a",
+      "label": "Channel 19A",
+      "frequency_hz": 156950000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Commercial"
+    },
+    {
+      "id": "marine-20-20a",
+      "label": "Channel 20 / 20A",
+      "frequency_hz": 157000000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Port operations; Channel 20 and 20A share this lower frequency"
+    },
+    {
+      "id": "marine-21a",
+      "label": "Channel 21A",
+      "frequency_hz": 157050000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "U.S. Coast Guard only"
+    },
+    {
+      "id": "marine-22a",
+      "label": "Channel 22A",
+      "frequency_hz": 157100000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "US Coast Guard liaison"
+    },
+    {
+      "id": "marine-23a",
+      "label": "Channel 23A",
+      "frequency_hz": 157150000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "U.S. Coast Guard only"
+    },
+    {
+      "id": "marine-24",
+      "label": "Channel 24",
+      "frequency_hz": 157200000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Public correspondence lower frequency; paired coast side is outside this capture window"
+    },
+    {
+      "id": "marine-25",
+      "label": "Channel 25",
+      "frequency_hz": 157250000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Public correspondence lower frequency; paired coast side is outside this capture window"
+    },
+    {
+      "id": "marine-26",
+      "label": "Channel 26",
+      "frequency_hz": 157300000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Public correspondence lower frequency; paired coast side is outside this capture window"
+    },
+    {
+      "id": "marine-27",
+      "label": "Channel 27",
+      "frequency_hz": 157350000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Public correspondence lower frequency; paired coast side is outside this capture window"
+    },
+    {
+      "id": "marine-28",
+      "label": "Channel 28",
+      "frequency_hz": 157400000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Public correspondence lower frequency; paired coast side is outside this capture window"
+    },
+    {
+      "id": "marine-63a",
+      "label": "Channel 63A",
+      "frequency_hz": 156175000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Port operations, commercial, and VTS in limited U.S. areas"
+    },
+    {
+      "id": "marine-65a",
+      "label": "Channel 65A",
+      "frequency_hz": 156275000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Port operations"
+    },
+    {
+      "id": "marine-66a",
+      "label": "Channel 66A",
+      "frequency_hz": 156325000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Port operations"
+    },
+    {
+      "id": "marine-67",
+      "label": "Channel 67",
+      "frequency_hz": 156375000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Commercial and bridge-to-bridge use in the lower Mississippi River"
+    },
+    {
+      "id": "marine-68",
+      "label": "Channel 68",
+      "frequency_hz": 156425000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Recreational vessel working channel"
+    },
+    {
+      "id": "marine-69",
+      "label": "Channel 69",
+      "frequency_hz": 156475000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Non-commercial"
+    },
+    {
+      "id": "marine-70",
+      "label": "Channel 70",
+      "frequency_hz": 156525000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Digital selective calling; voice communications are not allowed"
+    },
+    {
+      "id": "marine-71",
+      "label": "Channel 71",
+      "frequency_hz": 156575000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Non-commercial"
+    },
+    {
+      "id": "marine-72",
+      "label": "Channel 72",
+      "frequency_hz": 156625000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Ship-to-ship working channel"
+    },
+    {
+      "id": "marine-73",
+      "label": "Channel 73",
+      "frequency_hz": 156675000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Port operations"
+    },
+    {
+      "id": "marine-74",
+      "label": "Channel 74",
+      "frequency_hz": 156725000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Port operations"
+    },
+    {
+      "id": "marine-77",
+      "label": "Channel 77",
+      "frequency_hz": 156875000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Port operations intership"
+    },
+    {
+      "id": "marine-78a",
+      "label": "Channel 78A",
+      "frequency_hz": 156925000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Non-commercial"
+    },
+    {
+      "id": "marine-79a",
+      "label": "Channel 79A",
+      "frequency_hz": 156975000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Commercial; non-commercial in Great Lakes only"
+    },
+    {
+      "id": "marine-80a",
+      "label": "Channel 80A",
+      "frequency_hz": 157025000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Commercial; non-commercial in Great Lakes only"
+    },
+    {
+      "id": "marine-81a",
+      "label": "Channel 81A",
+      "frequency_hz": 157075000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "U.S. government environmental protection operations"
+    },
+    {
+      "id": "marine-82a",
+      "label": "Channel 82A",
+      "frequency_hz": 157125000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "U.S. government only"
+    },
+    {
+      "id": "marine-83a",
+      "label": "Channel 83A",
+      "frequency_hz": 157175000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "U.S. Coast Guard only"
+    },
+    {
+      "id": "marine-84",
+      "label": "Channel 84",
+      "frequency_hz": 157225000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Public correspondence lower frequency; paired coast side is outside this capture window"
+    },
+    {
+      "id": "marine-85",
+      "label": "Channel 85",
+      "frequency_hz": 157275000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Public correspondence lower frequency; paired coast side is outside this capture window"
+    },
+    {
+      "id": "marine-86",
+      "label": "Channel 86",
+      "frequency_hz": 157325000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Public correspondence lower frequency; paired coast side is outside this capture window"
+    },
+    {
+      "id": "marine-87",
+      "label": "Channel 87",
+      "frequency_hz": 157375000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Public correspondence"
+    },
+    {
+      "id": "marine-88",
+      "label": "Channel 88",
+      "frequency_hz": 157425000,
+      "modulation": "nfm",
+      "capture_group_id": "marine-core",
+      "description": "Commercial intership"
+    }
+  ]
+}

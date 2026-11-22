@@ -1,0 +1,74 @@
+{
+  "id": "iad-airband",
+  "label": "IAD Airband",
+  "domain": "aviation",
+  "description": "Washington Dulles core tower, ground, and nearby approach channels that fit inside one RTL-SDR Blog V3 capture window.",
+  "transcription_prompt": "Air traffic control radio near Washington Dulles. Expect callsigns, runway numbers, headings, altitudes, taxiways, and the NATO phonetic alphabet.",
+  "detection": {
+    "activity_threshold": 0.0025,
+    "warmup_sec": 2.0,
+    "threshold_multiplier": 8.0,
+    "noise_floor_alpha": 0.03,
+    "pre_roll_sec": 0.75,
+    "min_duration_sec": 0.35,
+    "hang_sec": 0.8,
+    "max_duration_sec": 45.0
+  },
+  "capture_groups": [
+    {
+      "id": "iad-core",
+      "device_kind": "rtlsdr_v3",
+      "center_frequency_hz": 121000000,
+      "sample_rate_hz": 2400000,
+      "gain_db": 28.0,
+      "ppm_error": 0.0,
+      "bias_tee": false,
+      "audio_rate_hz": 16000,
+      "channel_rate_hz": 240000,
+      "audio_pass_hz": 5000,
+      "audio_stop_hz": 6500
+    }
+  ],
+  "channels": [
+    {
+      "id": "iad-tower-120100",
+      "label": "Tower 120.100",
+      "frequency_hz": 120100000,
+      "modulation": "am",
+      "capture_group_id": "iad-core",
+      "description": "Dulles Tower primary"
+    },
+    {
+      "id": "iad-tower-120250",
+      "label": "Tower 120.250",
+      "frequency_hz": 120250000,
+      "modulation": "am",
+      "capture_group_id": "iad-core",
+      "description": "Dulles Tower runway sector"
+    },
+    {
+      "id": "potomac-approach-120450",
+      "label": "Approach 120.450",
+      "frequency_hz": 120450000,
+      "modulation": "am",
+      "capture_group_id": "iad-core",
+      "description": "Potomac Approach sector"
+    },
+    {
+      "id": "iad-ground-121625",
+      "label": "Ground West 121.625",
+      "frequency_hz": 121625000,
+      "modulation": "am",
+      "capture_group_id": "iad-core",
+      "description": "Dulles Ground west side"
+    },
+    {
+      "id": "iad-ground-121900",
+      "label": "Ground East 121.900",
+      "frequency_hz": 121900000,
+      "modulation": "am",
+      "capture_group_id": "iad-core",
+      "description": "Dulles Ground east side"
+    }
+  ]
+}

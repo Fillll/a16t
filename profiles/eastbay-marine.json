@@ -1,0 +1,48 @@
+{
+  "id": "eastbay-marine",
+  "label": "East Bay Marine",
+  "domain": "marine",
+  "description": "Inshore voice traffic along the East Bay waterfront and at the Port of Oakland, including San Francisco Traffic and the Coast Guard.",
+  "capture_groups": [
+    {
+      "id": "eastbay-voice",
+      "device_kind": "rtlsdr_v3",
+      "center_frequency_hz": 156875000,
+      "sample_rate_hz": 2400000
+    }
+  ],
+  "channels": [
+    {
+      "id": "marine-14",
+      "label": "Channel 14",
+      "frequency_hz": 156700000,
+      "modulation": "nfm",
+      "capture_group_id": "eastbay-voice",
+      "description": "San Francisco Traffic, inshore Vessel Traffic Service"
+    },
+    {
+      "id": "marine-13",
+      "label": "Channel 13",
+      "frequency_hz": 156650000,
+      "modulation": "nfm",
+      "capture_group_id": "eastbay-voice",
+      "description": "Bridge-to-bridge navigation"
+    },
+    {
+      "id": "marine-16",
+      "label": "Channel 16",
+      "frequency_hz": 156800000,
+      "modulation": "nfm",
+      "capture_group_id": "eastbay-voice",
+      "description": "Calling, distress, and safety"
+    },
+    {
+      "id": "marine-22a",
+      "label": "Channel 22A",
+      "frequency_hz": 157100000,
+      "modulation": "nfm",
+      "capture_group_id": "eastbay-voice",
+      "description": "Coast Guard liaison and marine safety broadcasts (1022)"
+    }
+  ]
+}

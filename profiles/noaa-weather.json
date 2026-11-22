@@ -1,0 +1,26 @@
+{
+  "id": "noaa-weather",
+  "label": "Bay Area Weather Radio",
+  "domain": "weather",
+  "description": "Continuous NOAA Weather Radio for a Bay Area receive-path check.",
+  "capture_groups": [
+    {
+      "id": "weather",
+      "center_frequency_hz": 162200000,
+      "sample_rate_hz": 2400000,
+      "device_kind": "rtlsdr_v3",
+      "gain_db": 43.9,
+      "bias_tee": false
+    }
+  ],
+  "channels": [
+    {
+      "id": "khb49",
+      "label": "KHB49 Weather",
+      "frequency_hz": 162400000,
+      "modulation": "nfm",
+      "capture_group_id": "weather",
+      "description": "NOAA Weather Radio, San Francisco Bay Area"
+    }
+  ]
+}

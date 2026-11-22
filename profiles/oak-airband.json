@@ -1,0 +1,40 @@
+{
+  "id": "oak-airband",
+  "label": "Oakland Airband",
+  "domain": "aviation",
+  "description": "Oakland runway 12/30 tower and two nearby NorCal Approach frequencies in one live capture window.",
+  "capture_groups": [
+    {
+      "id": "oak-tower-approach",
+      "device_kind": "rtlsdr_v3",
+      "center_frequency_hz": 126275000,
+      "sample_rate_hz": 2400000
+    }
+  ],
+  "channels": [
+    {
+      "id": "oak-tower-127200",
+      "label": "Oakland Tower South",
+      "frequency_hz": 127200000,
+      "modulation": "am",
+      "capture_group_id": "oak-tower-approach",
+      "description": "Oakland Tower, runway 12/30"
+    },
+    {
+      "id": "norcal-approach-125350",
+      "label": "NorCal Approach South",
+      "frequency_hz": 125350000,
+      "modulation": "am",
+      "capture_group_id": "oak-tower-approach",
+      "description": "NorCal Approach for the south side of Oakland Class C"
+    },
+    {
+      "id": "norcal-approach-127000",
+      "label": "NorCal Approach North",
+      "frequency_hz": 127000000,
+      "modulation": "am",
+      "capture_group_id": "oak-tower-approach",
+      "description": "NorCal Approach north of Oakland"
+    }
+  ]
+}

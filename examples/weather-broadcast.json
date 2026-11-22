@@ -1,0 +1,22 @@
+{
+  "source": "live",
+  "station": "KHB-49",
+  "frequency_hz": 162400000,
+  "sample_start_utc_approx": "2026-11-22T03:18:45Z",
+  "capture_time_basis": "host file creation time",
+  "duration_seconds": 15,
+  "receiver": "RTL-SDR, R820T tuner",
+  "rf_gain_db": 43.9,
+  "modulation": "narrow FM",
+  "capture_center_hz": 162200000,
+  "capture_rate_samples_per_second": 2400000,
+  "demodulation": "A16T GNU Radio IQ receiver",
+  "audio_rate_hz_before_encoding": 16000,
+  "audio_encoding": "Ogg Opus mono, 64 kbit/s target, audio mode",
+  "verification": "After decoding this Opus file, two independent local Whisper models recovered the same tide level (7.8 feet) and Sunday morning time (8:48 a.m.). The signal contains audible-band noise; this is a receiver test, not a current forecast or a verbatim transcript.",
+  "station_reference": "https://www.weather.gov/mtr/nwr",
+  "sha256": "ebaede1b40f04d76ea878ba7908fae3ce415850ce8bfb9a74d711c59045154c9",
+  "rf_squelch_dbfs": -52,
+  "broadcast": "Over-the-air NOAA Weather Radio",
+  "usage": "Archival reception example. Consult the National Weather Service for current forecasts."
+}

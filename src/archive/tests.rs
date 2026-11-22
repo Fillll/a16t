@@ -1,0 +1,240 @@
+use super::*;
+use tempfile::TempDir;
+
+fn store(root: &TempDir, budget: u64) -> Archive {
+    Archive::open_with(
+        root.path().to_owned(),
+        false,
+        budget,
+        Speech {
+            provider: "none".into(),
+            model: String::new(),
+            whisper_bin: "whisper-cli".into(),
+        },
+    )
+    .unwrap()
+}
+
+#[test]
+fn interruption_after_wav_write_recovers_one_playable_clip() -> Result<()> {
+    let root = TempDir::new()?;
+    let archive = store(&root, u64::MAX);
+    let session = archive.start_session("test-profile", "replay")?;
+    let id = archive.save(session, "one", 100, 250, &[123; 16_000])?;
+    let wav = archive.file(id, "wav");
+    // Simulate a stop after the complete temporary file reaches disk and before publication.
+    fs::rename(&wav, archive.file(id, "wav.part"))?;
+    archive
+        .db()?
+        .execute("UPDATE clips SET status='recording' WHERE id=?1", [id])?;
+    drop(archive);
+    let archive = store(&root, u64::MAX);
+    assert_eq!(archive.recent()?[0].status, "queued");
+    assert_eq!(archive.audio(id)?.unwrap().1, "audio/wav");
+    archive.process_pending()?;
+    archive.process_pending()?;
+    let clips = archive.recent()?;
+    assert_eq!(clips.len(), 1);
+    let clip = &clips[0];
+    assert_eq!(
+        (
+            &clip.profile[..],
+            &clip.source[..],
+            clip.duration_ms,
+            clip.session_id
+        ),
+        ("test-profile", "replay", 1000, session)
+    );
+    assert_eq!(clip.status, "ready");
+    assert_eq!(clip.transcription_status, "disabled");
+    assert!(!wav.exists());
+    let (path, mime) = archive.audio(id)?.unwrap();
+    assert_eq!(mime, "audio/ogg");
+    assert!(fs::read(&path)?.windows(8).any(|s| s == b"OpusHead"));
+    Ok(())
+}
+
+#[test]
+fn truncated_recording_is_never_encoded_or_served() -> Result<()> {
+    let root = TempDir::new()?;
+    let archive = store(&root, u64::MAX);
+    let session = archive.start_session("test", "live")?;
+    let id = archive.save(session, "one", 200, 500, &[200; 100])?;
+    fs::write(archive.file(id, "wav"), b"broken")?;
+    archive
+        .db()?
+        .execute("UPDATE clips SET status='recording' WHERE id=?1", [id])?;
+    drop(archive);
+    let archive = store(&root, u64::MAX);
+    archive.process_pending()?;
+    assert_eq!(archive.recent()?[0].status, "incomplete");
+    assert!(archive.audio(id)?.is_none());
+    Ok(())
+}
+
+#[test]
+fn retention_expires_oldest_audio_and_keeps_history() -> Result<()> {
+    let root = TempDir::new()?;
+    let archive = store(&root, u64::MAX);
+    let session = archive.start_session("test", "live")?;
+    let older = archive.save(session, "one", 200, 10, &[123; 8_000])?;
+    let newer = archive.save(session, "one", 200, 20, &[123; 8_000])?;
+    archive.process_pending()?;
+    let budget = fs::metadata(archive.audio(newer)?.unwrap().0)?.len();
+    drop(archive);
+    let archive = store(&root, budget);
+    assert!(archive.audio(older)?.is_none());
+    assert!(archive.audio(newer)?.is_some());
+    assert_eq!(archive.recent()?[1].status, "expired");
+    Ok(())
+}
+
+#[test]
+fn interrupted_cloud_request_is_never_resubmitted() -> Result<()> {
+    let root = TempDir::new()?;
+    let archive = store(&root, u64::MAX);
+    let session = archive.start_session("test", "live")?;
+    let id = archive.save(session, "one", 200, 20, &[123; 8_000])?;
+    archive.db()?.execute(
+        "UPDATE clips SET provider='openai',transcription_status='sending' WHERE id=?1",
+        [id],
+    )?;
+    drop(archive);
+    let archive = store(&root, u64::MAX);
+    archive.process_pending()?;
+    let clip = &archive.recent()?[0];
+    assert_eq!(clip.transcription_status, "uncertain");
+    assert_eq!(clip.status, "ready");
+    assert!(archive.file(id, "wav").is_file());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn local_transcription_gets_original_wav_before_archival() -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let root = TempDir::new()?;
+    let fake_whisper = root.path().join("test-whisper");
+    // This fixture checks the whisper-cli arguments and writes the documented text sidecar.
+    fs::write(
+        &fake_whisper,
+        r#"#!/bin/sh
+set -eu
+while test "$#" -gt 0; do
+    case "$1" in
+        -f) shift; input="$1";;
+        -of) shift; output="$1";;
+    esac
+    shift
+done
+test "$(head -c 4 "$input")" = RIFF
+printf 'Synthetic test audio\n' > "$output.txt"
+"#,
+    )?;
+    fs::set_permissions(&fake_whisper, fs::Permissions::from_mode(0o700))?;
+    let archive = Archive::open_with(
+        root.path().to_owned(),
+        false,
+        u64::MAX,
+        Speech {
+            provider: "local".into(),
+            model: "synthetic-model".into(),
+            whisper_bin: fake_whisper,
+        },
+    )?;
+    let session = archive.start_session("test", "replay")?;
+    let id = archive.save(session, "one", 200, 20, &[123; 8000])?;
+    archive.process_pending()?;
+    let clip = &archive.recent()?[0];
+    assert_eq!(clip.transcript.as_deref(), Some("Synthetic test audio"));
+    assert_eq!(clip.transcription_status, "complete");
+    assert!(!archive.file(id, "wav").exists());
+    assert!(!archive.file(id, "transcript.txt").exists());
+    Ok(())
+}
+
+#[test]
+fn archives_full_backlog_and_remembers_completed_submissions() -> Result<()> {
+    let root = TempDir::new()?;
+    let archive = store(&root, u64::MAX);
+    let session = archive.start_session("test", "replay")?;
+    let seed = archive.save(session, "one", 200, 1, &[100; 640])?;
+    archive.process_pending()?;
+    let opus = archive.audio(seed)?.unwrap().0;
+    for tick in 1..=33 {
+        let id = archive.save(session, "one", 200, tick + 1, &[100; 640])?;
+        // The request result and encoded file reached disk before the job was finalized.
+        archive.db()?.execute("UPDATE clips SET provider='openai',transcription_status='complete',transcript='synthetic' WHERE id=?1",[id])?;
+        fs::copy(&opus, archive.file(id, "opus"))?;
+    }
+    drop(archive);
+    let archive = store(&root, u64::MAX);
+    archive.process_pending()?;
+    assert!(archive.recent()?.iter().all(|clip| clip.status == "ready"));
+    assert_eq!(
+        archive
+            .recent()?
+            .iter()
+            .filter(|clip| clip.transcript.as_deref() == Some("synthetic"))
+            .count(),
+        33
+    );
+    Ok(())
+}
+
+#[test]
+fn original_audio_follows_retention_until_paused_or_uncertain_clips_expire() -> Result<()> {
+    let root = TempDir::new()?;
+    let archive = store(&root, u64::MAX);
+    let session = archive.start_session("test", "replay")?;
+    let paused = archive.save(session, "one", 200, 1, &[200; 16_000])?;
+    let uncertain = archive.save(session, "two", 300, 2, &[300; 16_000])?;
+    archive.db()?.execute(
+        "UPDATE clips SET provider='openai',transcription_status='pending' WHERE id=?1",
+        [paused],
+    )?;
+    archive.db()?.execute(
+        "UPDATE clips SET provider='openai',transcription_status='sending' WHERE id=?1",
+        [uncertain],
+    )?;
+    drop(archive);
+    let archive = store(&root, u64::MAX);
+    archive.process_pending()?;
+    let clips = archive.recent()?;
+    assert_eq!(clips[0].transcription_status, "uncertain");
+    assert_eq!(clips[1].transcription_status, "paused");
+    for id in [paused, uncertain] {
+        assert!(archive.file(id, "wav").is_file());
+        assert!(archive.file(id, "opus").is_file());
+    }
+    drop(archive);
+    let archive = store(&root, 0);
+    let clips = archive.recent()?;
+    assert!(clips.iter().all(|c| c.status == "expired"));
+    assert_eq!(clips[0].transcription_status, "uncertain");
+    assert_eq!(clips[1].transcription_status, "paused");
+    for id in [paused, uncertain] {
+        assert!(!archive.file(id, "wav").exists());
+        assert!(archive.audio(id)?.is_none());
+    }
+    Ok(())
+}
+
+#[test]
+fn headless_results_scope_errors_to_the_session_after_retention() -> Result<()> {
+    let root = TempDir::new()?;
+    let archive = store(&root, 0);
+    let first = archive.start_session("test", "replay")?;
+    let second = archive.start_session("test", "live")?;
+    let id = archive.save(first, "one", 200, 1, &[200; 16_000])?;
+    archive.save(second, "one", 200, 2, &[100; 16_000])?;
+    // Simulate an unreadable recording while leaving the durable job queued for the encoder.
+    fs::write(archive.file(id, "wav"), b"invalid audio")?;
+    archive.process_pending()?;
+    assert!(archive.recent()?.iter().all(|c| c.status == "expired"));
+    let error = archive.session_failure(first)?.unwrap();
+    assert!(error.contains(&format!("clip {id}")));
+    assert!(error.contains("Opus encoding failed"));
+    assert!(archive.session_failure(second)?.is_none());
+    Ok(())
+}
