@@ -378,6 +378,7 @@ async function refresh() {
 
 function selectView() {
   timelineVisible = location.hash === "#timeline";
+  document.body.classList.toggle("timeline-page", timelineVisible);
   const title = timelineVisible ? "Timeline" : "Watchboard";
   setText($("title"), title);
   document.title = "A16T · " + title;

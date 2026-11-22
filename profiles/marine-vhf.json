@@ -48,6 +48,7 @@
     },
     {
       "id": "marine-5a",
+      "default_kind": "port",
       "label": "Channel 5A",
       "frequency_hz": 156250000,
       "modulation": "nfm",
@@ -64,6 +65,7 @@
     },
     {
       "id": "marine-7a",
+      "default_kind": "commercial",
       "label": "Channel 7A",
       "frequency_hz": 156350000,
       "modulation": "nfm",
@@ -72,6 +74,7 @@
     },
     {
       "id": "marine-8",
+      "default_kind": "commercial",
       "label": "Channel 8",
       "frequency_hz": 156400000,
       "modulation": "nfm",
@@ -88,6 +91,7 @@
     },
     {
       "id": "marine-10",
+      "default_kind": "commercial",
       "label": "Channel 10",
       "frequency_hz": 156500000,
       "modulation": "nfm",
@@ -104,6 +108,7 @@
     },
     {
       "id": "marine-12",
+      "default_kind": "port",
       "label": "Channel 12",
       "frequency_hz": 156600000,
       "modulation": "nfm",
@@ -112,6 +117,7 @@
     },
     {
       "id": "marine-13",
+      "default_kind": "other",
       "label": "Channel 13",
       "frequency_hz": 156650000,
       "modulation": "nfm",
@@ -120,6 +126,7 @@
     },
     {
       "id": "marine-14",
+      "default_kind": "port",
       "label": "Channel 14",
       "frequency_hz": 156700000,
       "modulation": "nfm",
@@ -128,6 +135,7 @@
     },
     {
       "id": "marine-15",
+      "default_kind": "other",
       "label": "Channel 15",
       "frequency_hz": 156750000,
       "modulation": "nfm",
@@ -136,6 +144,7 @@
     },
     {
       "id": "marine-17",
+      "default_kind": "other",
       "label": "Channel 17",
       "frequency_hz": 156850000,
       "modulation": "nfm",
@@ -144,6 +153,7 @@
     },
     {
       "id": "marine-18a",
+      "default_kind": "commercial",
       "label": "Channel 18A",
       "frequency_hz": 156900000,
       "modulation": "nfm",
@@ -152,6 +162,7 @@
     },
     {
       "id": "marine-19a",
+      "default_kind": "commercial",
       "label": "Channel 19A",
       "frequency_hz": 156950000,
       "modulation": "nfm",
@@ -160,6 +171,7 @@
     },
     {
       "id": "marine-20-20a",
+      "default_kind": "port",
       "label": "Channel 20 / 20A",
       "frequency_hz": 157000000,
       "modulation": "nfm",
@@ -192,6 +204,7 @@
     },
     {
       "id": "marine-24",
+      "default_kind": "other",
       "label": "Channel 24",
       "frequency_hz": 157200000,
       "modulation": "nfm",
@@ -200,6 +213,7 @@
     },
     {
       "id": "marine-25",
+      "default_kind": "other",
       "label": "Channel 25",
       "frequency_hz": 157250000,
       "modulation": "nfm",
@@ -208,6 +222,7 @@
     },
     {
       "id": "marine-26",
+      "default_kind": "other",
       "label": "Channel 26",
       "frequency_hz": 157300000,
       "modulation": "nfm",
@@ -216,6 +231,7 @@
     },
     {
       "id": "marine-27",
+      "default_kind": "other",
       "label": "Channel 27",
       "frequency_hz": 157350000,
       "modulation": "nfm",
@@ -224,6 +240,7 @@
     },
     {
       "id": "marine-28",
+      "default_kind": "other",
       "label": "Channel 28",
       "frequency_hz": 157400000,
       "modulation": "nfm",
@@ -240,6 +257,7 @@
     },
     {
       "id": "marine-65a",
+      "default_kind": "port",
       "label": "Channel 65A",
       "frequency_hz": 156275000,
       "modulation": "nfm",
@@ -248,6 +266,7 @@
     },
     {
       "id": "marine-66a",
+      "default_kind": "port",
       "label": "Channel 66A",
       "frequency_hz": 156325000,
       "modulation": "nfm",
@@ -264,6 +283,7 @@
     },
     {
       "id": "marine-68",
+      "default_kind": "other",
       "label": "Channel 68",
       "frequency_hz": 156425000,
       "modulation": "nfm",
@@ -272,6 +292,7 @@
     },
     {
       "id": "marine-69",
+      "default_kind": "other",
       "label": "Channel 69",
       "frequency_hz": 156475000,
       "modulation": "nfm",
@@ -288,6 +309,7 @@
     },
     {
       "id": "marine-71",
+      "default_kind": "other",
       "label": "Channel 71",
       "frequency_hz": 156575000,
       "modulation": "nfm",
@@ -296,6 +318,7 @@
     },
     {
       "id": "marine-72",
+      "default_kind": "other",
       "label": "Channel 72",
       "frequency_hz": 156625000,
       "modulation": "nfm",
@@ -304,6 +327,7 @@
     },
     {
       "id": "marine-73",
+      "default_kind": "port",
       "label": "Channel 73",
       "frequency_hz": 156675000,
       "modulation": "nfm",
@@ -312,6 +336,7 @@
     },
     {
       "id": "marine-74",
+      "default_kind": "port",
       "label": "Channel 74",
       "frequency_hz": 156725000,
       "modulation": "nfm",
@@ -320,6 +345,7 @@
     },
     {
       "id": "marine-77",
+      "default_kind": "port",
       "label": "Channel 77",
       "frequency_hz": 156875000,
       "modulation": "nfm",
@@ -328,6 +354,7 @@
     },
     {
       "id": "marine-78a",
+      "default_kind": "other",
       "label": "Channel 78A",
       "frequency_hz": 156925000,
       "modulation": "nfm",
@@ -352,6 +379,7 @@
     },
     {
       "id": "marine-81a",
+      "default_kind": "other",
       "label": "Channel 81A",
       "frequency_hz": 157075000,
       "modulation": "nfm",
@@ -376,6 +404,7 @@
     },
     {
       "id": "marine-84",
+      "default_kind": "other",
       "label": "Channel 84",
       "frequency_hz": 157225000,
       "modulation": "nfm",
@@ -384,6 +413,7 @@
     },
     {
       "id": "marine-85",
+      "default_kind": "other",
       "label": "Channel 85",
       "frequency_hz": 157275000,
       "modulation": "nfm",
@@ -392,6 +422,7 @@
     },
     {
       "id": "marine-86",
+      "default_kind": "other",
       "label": "Channel 86",
       "frequency_hz": 157325000,
       "modulation": "nfm",
@@ -400,6 +431,7 @@
     },
     {
       "id": "marine-87",
+      "default_kind": "other",
       "label": "Channel 87",
       "frequency_hz": 157375000,
       "modulation": "nfm",
@@ -408,6 +440,7 @@
     },
     {
       "id": "marine-88",
+      "default_kind": "commercial",
       "label": "Channel 88",
       "frequency_hz": 157425000,
       "modulation": "nfm",

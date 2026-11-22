@@ -1,4 +1,5 @@
 use crate::monitor::{App, now_ms};
+use a16t::{archive::Transmission, classification::classify};
 use axum::{
     Json, Router,
     body::Body,
@@ -11,6 +12,7 @@ use axum::{
     routing::get,
 };
 use bytes::Bytes;
+use serde::Serialize;
 use serde_json::{Value, json};
 use std::{collections::HashMap, convert::Infallible, time::Duration};
 use tokio::sync::broadcast::error::RecvError;
@@ -36,14 +38,61 @@ async fn state(State(app): State<App>) -> Response {
         }
     }
 }
+#[derive(Serialize)]
+struct TimelineMark {
+    #[serde(flatten)]
+    recording: Transmission,
+    kind: &'static str,
+    kind_source: &'static str,
+    preview: Option<String>,
+}
+
+fn transcript_preview(text: &str) -> Option<String> {
+    let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut chars = normalized.chars();
+    let mut preview: String = chars.by_ref().take(120).collect();
+    if chars.next().is_some() {
+        preview.push('…');
+    }
+    (!preview.is_empty()).then_some(preview)
+}
+
 async fn timeline(State(app): State<App>) -> Response {
     let end_ms = now_ms();
     let start_ms = end_ms - 3_600_000;
     let archive = app.archive.clone();
     let source = app.source.clone();
-    let result =
-        tokio::task::spawn_blocking(move || archive.transmissions(&source, start_ms, end_ms)).await;
-    let mut transmissions = match result {
+    let channels: HashMap<_, _> = app
+        .health
+        .lock()
+        .unwrap()
+        .channels
+        .iter()
+        .map(|ch| (ch.id.clone(), (ch.frequency_hz, ch.default_kind)))
+        .collect();
+    let result = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<_>> {
+        let recordings = archive.transmissions(&source, start_ms, end_ms)?;
+        Ok(recordings
+            .into_iter()
+            .filter_map(|recording| {
+                let &(frequency, default_kind) = channels.get(&recording.channel)?;
+                if frequency != recording.frequency_hz {
+                    return None;
+                }
+                let transcript = recording.transcript.as_deref();
+                let (kind, kind_source) = classify(transcript, default_kind);
+                let preview = transcript.and_then(transcript_preview);
+                Some(TimelineMark {
+                    recording,
+                    kind,
+                    kind_source,
+                    preview,
+                })
+            })
+            .collect())
+    })
+    .await;
+    let transmissions = match result {
         Ok(Ok(rows)) => rows,
         Ok(Err(error)) => {
             eprintln!("Timeline read failed: {error}");
@@ -54,15 +103,6 @@ async fn timeline(State(app): State<App>) -> Response {
             return StatusCode::SERVICE_UNAVAILABLE.into_response();
         }
     };
-    let channels: HashMap<_, _> = app
-        .health
-        .lock()
-        .unwrap()
-        .channels
-        .iter()
-        .map(|ch| (ch.id.clone(), ch.frequency_hz))
-        .collect();
-    transmissions.retain(|tx| channels.get(&tx.channel) == Some(&tx.frequency_hz));
     (
         [(header::CACHE_CONTROL, "no-store")],
         Json(

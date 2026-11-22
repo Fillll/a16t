@@ -7,6 +7,10 @@ window.a16tTimeline = (() => {
   const seconds = new Intl.DateTimeFormat("en-GB", {timeZone: "UTC", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23"});
   const date = new Intl.DateTimeFormat("en-GB", {timeZone: "UTC", day: "2-digit", month: "short", year: "numeric"});
   const rows = new Map();
+  const kinds = new Map([
+    ["distress", "Distress"], ["urgency", "PAN-PAN"], ["safety", "Safety"],
+    ["port", "Port operations"], ["commercial", "Commercial"], ["other", "Other"], ["unknown", "Unclassified"]
+  ]);
   let visible = false;
   let state = null;
   let profileKey = null;
@@ -18,21 +22,28 @@ window.a16tTimeline = (() => {
   let failed = false;
   let recordingCount = 0;
   let newestRecording = null;
+  let tipMark = null;
+  let tipTimeout;
+  let plottedRange;
 
   view.innerHTML = `
-    <div class="tl-heading"><div><h2>Last 60 minutes</h2><p class="tl-summary"></p></div>
-      <div class="tl-legend"><span>Recorded</span><span>Receiving</span></div></div>
+    <div class="tl-heading"><div class="tl-heading-line"><h2>Last 60 minutes</h2><p class="tl-summary"></p></div>
+      <div class="tl-legend" aria-label="Transmission types"></div></div>
     <div class="tl-scroll" tabindex="0" role="region" aria-label="Channel activity over the last hour">
-      <div class="tl-axis"><span class="tl-axis-label">Channel</span>
+      <div class="tl-axis"><span class="tl-axis-label" aria-label="Channel">Ch.</span>
         <div class="tl-scale" aria-label="Time in UTC"><span></span><span></span><span></span><span></span><span>Now</span></div></div>
       <div class="tl-rows" role="list" aria-label="Channels in selected profile"></div>
     </div>
     <p class="tl-feedback" role="status"></p>
+    <div id="tl-tip" role="tooltip" hidden>
+      <strong class="tl-tip-kind"></strong><span class="tl-tip-source"></span>
+      <p class="tl-tip-meta"></p><p class="tl-tip-time"></p><p class="tl-tip-preview"></p>
+    </div>
     <dialog class="tl-dialog" aria-labelledby="tl-detail-channel">
       <div class="tl-dialog-head"><div><p class="eyebrow">Transmission</p><h3 id="tl-detail-channel"></h3></div>
         <button type="button" class="tl-close" autofocus>Close</button></div>
       <label class="tl-picker-label" for="tl-picker">Recording on this channel</label>
-      <select id="tl-picker"></select><p class="tl-details"></p>
+      <select id="tl-picker"></select><p class="tl-dialog-kind"></p><p class="tl-details"></p><p class="tl-dialog-preview"></p>
       <audio controls preload="none" aria-label="Timeline recording"></audio><p class="tl-audio-note" role="status"></p>
     </dialog>`;
   const get = selector => view.querySelector(selector);
@@ -41,6 +52,22 @@ window.a16tTimeline = (() => {
   const dialog = get("dialog");
   const picker = get("select");
   const player = get("audio");
+  const tip = get("#tl-tip");
+  const tipKind = get(".tl-tip-kind");
+  const tipSource = get(".tl-tip-source");
+  const tipMeta = get(".tl-tip-meta");
+  const tipTime = get(".tl-tip-time");
+  const tipPreview = get(".tl-tip-preview");
+  for (const [kind, label] of kinds) {
+    const key = document.createElement("span");
+    key.dataset.kind = kind;
+    key.textContent = label;
+    get(".tl-legend").append(key);
+  }
+  const liveKey = document.createElement("span");
+  liveKey.className = "tl-live-key";
+  liveKey.textContent = "Receiving";
+  get(".tl-legend").append(liveKey);
 
   function write(node, content) {
     if (node.textContent !== content) node.textContent = content;
@@ -57,9 +84,11 @@ window.a16tTimeline = (() => {
     const end = Math.min(to, range.end);
     mark.hidden = !(end > start);
     if (mark.hidden) return;
-    // Keep even a subsecond call visible at the right-hand edge of the plot.
-    mark.style.left = `min(calc(100% - 4px), ${(start - range.start) * 100 / range.width}%)`;
-    mark.style.width = `${(end - start) * 100 / range.width}%`;
+    // Center short marks on their real interval while keeping them inside the window.
+    const width = `max(var(--drop-min), ${(end - start) * 100 / range.width}%)`;
+    const center = (start + (end - start) / 2 - range.start) * 100 / range.width;
+    mark.style.width = width;
+    mark.style.left = `clamp(0px, calc(${center}% - ${width} / 2), calc(100% - ${width}))`;
   }
 
   function precise(ms) {
@@ -68,6 +97,130 @@ window.a16tTimeline = (() => {
 
   function timeLabel(clip) {
     return precise(clip.start_ms) + " – " + precise(clip.end_ms) + " UTC";
+  }
+
+  function kindOf(value) { return kinds.has(value) ? value : "unknown"; }
+
+  function evidence(clip) {
+    if (clip.kind_source === "channel") return "Channel use";
+    if (clip.kind_source === "transcript") return "Transcript match";
+    return "";
+  }
+
+  function channelName(channel) { return channel.label || channel.id; }
+  function frequency(channel) { return (channel.frequency_hz / 1e6).toFixed(3); }
+
+  function transmission(mark) {
+    const row = rows.get(mark.closest(".tl-row")?.dataset.channel);
+    if (!row || mark.hidden) return null;
+    if (mark === row.live) {
+      const ch = row.channel;
+      const kind = kindOf(ch.default_kind);
+      return {row, clip: {kind, kind_source: kind === "unknown" ? "unknown" : "channel",
+        start_ms: ch.active_since_ms, end_ms: ch.active_until_ms}, live: true};
+    }
+    const clip = row.clips.get(Number(mark.dataset.clipId));
+    return clip ? {row, clip, live: false} : null;
+  }
+
+  function hideTip() {
+    clearTimeout(tipTimeout);
+    tipMark?.removeAttribute("aria-describedby");
+    tipMark = null;
+    tip.hidden = true;
+  }
+
+  function leaveTip() {
+    clearTimeout(tipTimeout);
+    tipTimeout = setTimeout(hideTip, 130);
+  }
+
+  function showTip(mark) {
+    clearTimeout(tipTimeout);
+    const item = transmission(mark);
+    if (!item || dialog.open) { hideTip(); return; }
+    const {row, clip, live} = item;
+    if (tipMark !== mark) tipMark?.removeAttribute("aria-describedby");
+    tipMark = mark;
+    mark.setAttribute("aria-describedby", "tl-tip");
+    tip.dataset.kind = kindOf(clip.kind);
+    write(tipKind, kinds.get(tip.dataset.kind));
+    write(tipSource, evidence(clip));
+    write(tipMeta, channelName(row.channel) + " · " + frequency(row.channel) + " MHz");
+    const span = ((clip.end_ms - clip.start_ms) / 1000).toFixed(1) + " s";
+    write(tipTime, seconds.format(clip.start_ms) + " UTC · " + span + (live ? " · Receiving" : ""));
+    write(tipPreview, clip.preview ? "Transcript · " + clip.preview : "");
+    tip.hidden = false;
+    const anchor = mark.getBoundingClientRect();
+    const box = tip.getBoundingClientRect();
+    const left = Math.min(window.innerWidth - box.width - 8, Math.max(8, anchor.left + anchor.width / 2 - box.width / 2));
+    const top = anchor.top >= box.height + 12 ? anchor.top - box.height - 4 : anchor.bottom + 4;
+    tip.style.left = left + "px";
+    tip.style.top = Math.min(window.innerHeight - box.height - 4, Math.max(4, top)) + "px";
+  }
+
+  function pointerMark(event) {
+    const hit = event.target.closest(".tl-mark,.tl-live");
+    if (!hit) return null;
+    // Adjacent short calls may share pixels. Pick the actual interval closest
+    // to the cursor among the overlapping buttons, independent of paint order.
+    const marks = document.elementsFromPoint(event.clientX, event.clientY)
+      .filter(node => node.matches(".tl-mark,.tl-live"));
+    if (marks.length < 2 || !plottedRange) return hit;
+    const lane = hit.parentNode.getBoundingClientRect();
+    const time = plottedRange.start + (event.clientX - lane.left) * plottedRange.width / lane.width;
+    let nearest = hit;
+    let distance = Infinity;
+    for (const mark of marks) {
+      const item = transmission(mark);
+      if (item) {
+        const gap = Math.max(item.clip.start_ms - time, time - item.clip.end_ms, 0);
+        if (gap < distance) { nearest = mark; distance = gap; }
+      }
+    }
+    return nearest;
+  }
+
+  list.addEventListener("pointermove", event => {
+    if (event.pointerType === "touch") return;
+    const mark = pointerMark(event);
+    if (mark) clearTimeout(tipTimeout);
+    if (mark === tipMark) return;
+    if (mark) showTip(mark);
+    else if (tipMark) leaveTip();
+  });
+  list.addEventListener("pointerleave", leaveTip);
+  tip.addEventListener("pointerenter", () => clearTimeout(tipTimeout));
+  tip.addEventListener("pointerleave", hideTip);
+  list.addEventListener("focusin", event => {
+    if (event.target.matches(".tl-mark,.tl-live")) showTip(event.target);
+  });
+  list.addEventListener("focusout", hideTip);
+  list.addEventListener("click", event => {
+    const mark = event.detail ? pointerMark(event) : event.target.closest(".tl-mark,.tl-live");
+    if (!mark) return;
+    const item = transmission(mark);
+    if (!item) return;
+    if (item.live) showTip(mark);
+    else inspect(item.row, item.clip.id);
+  });
+  document.addEventListener("keydown", event => { if (event.key === "Escape") hideTip(); });
+  document.addEventListener("pointerdown", event => {
+    if (tipMark && !event.target.closest("#tl-tip,.tl-mark,.tl-live")) hideTip();
+  });
+  document.addEventListener("scroll", hideTip, true);
+  window.addEventListener("resize", hideTip);
+
+  const scroll = get(".tl-scroll");
+  function fitLanes() {
+    if (!visible) return;
+    const top = scroll.getBoundingClientRect().top + window.scrollY;
+    view.style.setProperty("--available-height", Math.max(160, window.innerHeight - top - 8) + "px");
+  }
+  window.addEventListener("resize", fitLanes);
+  if ("ResizeObserver" in window) {
+    const sizes = new ResizeObserver(fitLanes);
+    for (const el of document.querySelectorAll(".masthead,.overview,.archive-warning,.tl-heading")) sizes.observe(el);
   }
 
   function clearPlayer() {
@@ -81,9 +234,14 @@ window.a16tTimeline = (() => {
   function showClip(row, clip) {
     selection = {channel: row.channel.id, id: clip.id};
     picker.value = String(clip.id);
-    write(get("#tl-detail-channel"), row.channel.label || row.channel.id);
+    write(get("#tl-detail-channel"), channelName(row.channel));
+    const kind = kindOf(clip.kind);
+    const classification = get(".tl-dialog-kind");
+    classification.dataset.kind = kind;
+    write(classification, [kinds.get(kind), evidence(clip)].filter(Boolean).join(" · "));
+    write(get(".tl-dialog-preview"), clip.preview ? "Transcript · " + clip.preview : "");
     const duration = (clip.end_ms - clip.start_ms) / 1000;
-    write(get(".tl-details"), `${date.format(clip.start_ms)} · ${timeLabel(clip)} · ${duration.toFixed(2)} s · ${row.freq.textContent} MHz`);
+    write(get(".tl-details"), `${date.format(clip.start_ms)} · ${timeLabel(clip)} · ${duration.toFixed(2)} s · ${frequency(row.channel)} MHz`);
     const available = ["queued", "ready", "failed"].includes(clip.status);
     player.hidden = !available;
     const path = "/api/clips/" + encodeURIComponent(clip.id) + "/audio";
@@ -98,11 +256,12 @@ window.a16tTimeline = (() => {
   function inspect(row, id) {
     const clip = row.clips.get(id);
     if (!clip) return;
+    hideTip();
     picker.replaceChildren();
     for (const item of row.clips.values()) {
       const option = document.createElement("option");
       option.value = String(item.id);
-      option.textContent = timeLabel(item);
+      option.textContent = timeLabel(item) + " · " + kinds.get(kindOf(item.kind));
       picker.append(option);
     }
     picker.hidden = get(".tl-picker-label").hidden = row.clips.size < 2;
@@ -125,10 +284,11 @@ window.a16tTimeline = (() => {
     const node = document.createElement("div");
     node.className = "tl-row";
     node.setAttribute("role", "listitem");
-    node.innerHTML = `<div class="tl-channel"><button type="button" class="tl-name" disabled></button><span class="tl-freq"></span></div>
-      <div class="tl-lane"><span class="tl-live" hidden></span></div>`;
+    node.dataset.channel = channel.id;
+    node.innerHTML = `<div class="tl-channel"><button type="button" class="tl-name" disabled></button></div>
+      <div class="tl-lane"><button type="button" class="tl-live" hidden></button></div>`;
     const row = {node, channel, clips: new Map(), marks: new Map(), name: node.querySelector("button"),
-      freq: node.querySelector(".tl-freq"), lane: node.querySelector(".tl-lane"), live: node.querySelector(".tl-live")};
+      lane: node.querySelector(".tl-lane"), live: node.querySelector(".tl-live")};
     row.name.addEventListener("click", () => {
       const latest = [...row.clips.keys()].pop();
       if (latest != null) inspect(row, latest);
@@ -137,6 +297,7 @@ window.a16tTimeline = (() => {
   }
 
   function syncRows(channels) {
+    view.style.setProperty("--lane-count", Math.max(1, channels.length));
     const ids = new Set(channels.map(ch => ch.id));
     for (const [id, row] of rows) {
       if (!ids.has(id)) { row.node.remove(); rows.delete(id); }
@@ -146,10 +307,12 @@ window.a16tTimeline = (() => {
       let row = rows.get(channel.id);
       if (!row) { row = createRow(channel); rows.set(channel.id, row); }
       row.channel = channel;
-      const label = channel.label || channel.id;
-      write(row.name, label);
-      write(row.freq, (channel.frequency_hz / 1e6).toFixed(3));
-      row.freq.setAttribute("aria-label", row.freq.textContent + " megahertz");
+      const label = channelName(channel);
+      const number = /^(?:channel|ch\.?)\s+(\d.*)$/i.exec(label);
+      write(row.name, number ? number[1].replace(/\s*\/\s*/g, "/") : frequency(channel));
+      const identity = label + " · " + frequency(channel) + " MHz";
+      row.name.setAttribute("aria-label", identity);
+      row.name.parentNode.title = identity;
       if (row.node !== next) list.insertBefore(row.node, next);
       next = row.node.nextElementSibling;
     }
@@ -166,16 +329,18 @@ window.a16tTimeline = (() => {
       }
       if (!row.live.hidden) {
         receiving++;
-        row.live.title = "Receiving since " + seconds.format(ch.active_since_ms) + " UTC";
-        row.live.setAttribute("role", "img");
-        row.live.setAttribute("aria-label", row.live.title);
+        row.live.dataset.kind = kindOf(ch.default_kind);
+        row.live.setAttribute("aria-label", channelName(ch) + " · " + kinds.get(row.live.dataset.kind) +
+          " · Receiving since " + seconds.format(ch.active_since_ms) + " UTC");
       }
+      if (tipMark === row.live) showTip(row.live);
     }
     return receiving;
   }
 
   function renderHistory() {
     const range = bounds();
+    plottedRange = range;
     for (let i = 0; i < ticks.length - 1; i++) {
       const stamp = range.start + range.width * i / (ticks.length - 1);
       write(ticks[i], minutes.format(stamp));
@@ -192,7 +357,10 @@ window.a16tTimeline = (() => {
       row.clips = byChannel.get(row.channel.id) || new Map();
       recordingCount += row.clips.size;
       for (const [id, mark] of row.marks) {
-        if (!row.clips.has(id)) { mark.remove(); row.marks.delete(id); }
+        if (!row.clips.has(id)) {
+          if (tipMark === mark) hideTip();
+          mark.remove(); row.marks.delete(id);
+        }
       }
       for (const clip of row.clips.values()) {
         let mark = row.marks.get(clip.id);
@@ -200,16 +368,16 @@ window.a16tTimeline = (() => {
           mark = document.createElement("button");
           mark.type = "button";
           mark.className = "tl-mark";
-          mark.title = row.name.textContent + " · " + timeLabel(clip);
-          mark.setAttribute("aria-label", mark.title);
-          mark.addEventListener("click", () => inspect(row, clip.id));
+          mark.dataset.clipId = clip.id;
           row.lane.append(mark);
           row.marks.set(clip.id, mark);
         }
+        mark.dataset.kind = kindOf(clip.kind);
+        mark.setAttribute("aria-label", channelName(row.channel) + " · " + kinds.get(mark.dataset.kind) + " · " + timeLabel(clip));
         position(mark, clip.start_ms, clip.end_ms, range);
+        if (tipMark === mark) showTip(mark);
       }
       row.name.disabled = !row.clips.size;
-      row.name.title = row.clips.size ? `Inspect ${row.name.textContent} recordings` : "";
     }
     const counts = [`${rows.size} channel${rows.size === 1 ? "" : "s"}`];
     if (history) counts.push(`${recordingCount} recording${recordingCount === 1 ? "" : "s"}`);
@@ -267,6 +435,7 @@ window.a16tTimeline = (() => {
       request?.abort(); request = null;
       history = null;
       failed = false;
+      hideTip();
       if (dialog.open) dialog.close();
       syncRows(state.channels);
       renderHistory();
@@ -283,6 +452,7 @@ window.a16tTimeline = (() => {
     if (visible) { update(next); return; }
     visible = true;
     update(next);
+    fitLanes();
     renderHistory();
     refresh();
     timer = setInterval(() => { if (!document.hidden) refresh(); }, 5000);
@@ -292,6 +462,7 @@ window.a16tTimeline = (() => {
 
   function hide() {
     visible = false;
+    hideTip();
     request?.abort(); request = null;
     clearInterval(timer);
     if (dialog.open) dialog.close();

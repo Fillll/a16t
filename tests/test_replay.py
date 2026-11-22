@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import sqlite3
 import struct
 import subprocess
 import sys
@@ -115,6 +116,9 @@ class ReplayTest(unittest.TestCase):
                 self.assertEqual((timeline["profile"], timeline["source"]), (first["profile"], "replay"))
                 self.assertEqual(len(timeline["transmissions"]), 1)
                 event = timeline["transmissions"][0]
+                self.assertEqual(channel["default_kind"], "port")
+                self.assertEqual((event["kind"], event["kind_source"], event["preview"]),
+                                 ("port", "channel", None))
                 self.assertEqual(event["id"], clip["id"])
                 self.assertEqual(event["channel"], clip["channel"])
                 self.assertEqual(event["start_ms"], clip["start_ms"])
@@ -147,6 +151,19 @@ class ReplayTest(unittest.TestCase):
                     self.assertEqual(json.load(response)["transmissions"], [event])
                 with HTTP.open(base + clip_path, timeout=4) as response:
                     self.assertEqual(response.read(), opus)
+
+                # Transcription is asynchronous. The same mark acquires its new
+                # type and a bounded preview after the transcript is committed.
+                text = "PAN-PAN, all stations. " + "Écho " * 40
+                with sqlite3.connect(archive / "archive.sqlite3") as db:
+                    db.execute("UPDATE clips SET transcript=?, transcription_status='complete' WHERE id=?",
+                               (text, clip["id"]))
+                with HTTP.open(base + "/api/timeline", timeout=4) as response:
+                    updated = json.load(response)["transmissions"][0]
+                self.assertEqual((updated["id"], updated["kind"], updated["kind_source"]),
+                                 (clip["id"], "urgency", "transcript"))
+                self.assertEqual(updated["preview"], text[:120] + "…")
+                self.assertNotIn("transcript", updated)
 
             with run_receiver(archive, "noaa-weather") as base:
                 with HTTP.open(base + "/api/timeline", timeout=4) as response:

@@ -14,6 +14,7 @@
   "channels": [
     {
       "id": "marine-14",
+      "default_kind": "port",
       "label": "Channel 14",
       "frequency_hz": 156700000,
       "modulation": "nfm",
@@ -22,6 +23,7 @@
     },
     {
       "id": "marine-13",
+      "default_kind": "other",
       "label": "Channel 13",
       "frequency_hz": 156650000,
       "modulation": "nfm",

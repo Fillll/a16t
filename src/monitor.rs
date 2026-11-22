@@ -29,12 +29,34 @@ pub struct Channel {
     pub id: String,
     pub label: String,
     pub frequency_hz: u64,
+    #[serde(default)]
+    default_kind: ChannelUse,
+}
+#[derive(Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum ChannelUse {
+    Port,
+    Commercial,
+    Other,
+    #[default]
+    Unknown,
+}
+impl ChannelUse {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Port => "port",
+            Self::Commercial => "commercial",
+            Self::Other => "other",
+            Self::Unknown => "unknown",
+        }
+    }
 }
 #[derive(Clone, Serialize)]
 pub struct ChannelState {
     pub id: String,
     pub label: String,
     pub frequency_hz: u64,
+    pub default_kind: &'static str,
     pub level: f32,
     pub threshold: f32,
     pub active: bool,
@@ -70,6 +92,7 @@ impl App {
                 id: ch.id.clone(),
                 label: ch.label.clone(),
                 frequency_hz: ch.frequency_hz,
+                default_kind: ch.default_kind.as_str(),
                 level: 0.0,
                 threshold: profile.detection.activity_threshold,
                 active: false,

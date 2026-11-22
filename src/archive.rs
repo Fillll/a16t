@@ -60,6 +60,8 @@ pub struct Transmission {
     pub start_ms: i64,
     pub end_ms: i64,
     pub status: String,
+    #[serde(skip)]
+    pub transcript: Option<String>,
 }
 
 impl Archive {
@@ -414,7 +416,8 @@ impl Archive {
         // Ordering by this indexed endpoint also skips old clips in long-running archives.
         let mut stmt = db.prepare(
             "SELECT c.id, c.channel, c.frequency_hz, c.start_ms,
-                    c.start_ms + (c.samples + 15) / 16 AS end_ms, c.status
+                    c.start_ms + (c.samples + 15) / 16 AS end_ms, c.status,
+                    CASE WHEN c.transcription_status = 'complete' THEN c.transcript END
              FROM clips c JOIN sessions s ON s.id = c.session_id
              WHERE end_ms > ?2 AND c.start_ms < ?3 AND s.source = ?1
                AND c.samples > 0 AND c.status NOT IN ('recording', 'incomplete')
@@ -429,6 +432,7 @@ impl Archive {
                     start_ms: r.get(3)?,
                     end_ms: r.get(4)?,
                     status: r.get(5)?,
+                    transcript: r.get(6)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?)
