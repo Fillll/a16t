@@ -11,6 +11,8 @@ cargo run --release --locked -- --mode live --profile profiles/eastbay-marine.js
 
 A quiet marine window may contain no traffic. Compare a call audible on a second receiver to the clip timing and first and last words. Record duration, channel, frequency, gain, RF squelch, and whether audio was intelligible. Keep operator-specific locations and raw radio captures local. Public samples should contain only material suitable for redistribution with the sender or broadcast source identified and its provenance reviewed. Generating RF is unnecessary for these receive-only checks.
 
-## Public field sample
+## Public field samples
+
+The [9.16-second weather clip](../examples/weather-watchboard.opus) came directly from the live Watchboard archive. The application detected the audio and encoded a 19,006-byte mono Opus file using its standard 20 kbit/s target. Two local recognizers recovered the Bay Area and Central Coast forecast introduction and the words “mostly cloudy” from the file. [Live archive metadata](../examples/weather-watchboard.json)
 
 The [KHB49 recording](../examples/weather-broadcast.opus) contains 15 seconds of an over-the-air tide forecast. The tuner used 43.9 dB gain, and the GNU Radio file receiver demodulated the captured RF using −52 dBFS squelch. The exported sample uses 64 kbit/s Opus to preserve speech mixed with static. Two local recognizers recovered the same tide height and time from a decode of those exact bytes. Ordinary application clips use the 20 kbit/s setting documented in the archive guide. [Capture metadata](../examples/weather-broadcast.json)

@@ -16,6 +16,7 @@ __pycache__/
 *.ogg
 *.opus
 !/examples/weather-broadcast.opus
+!/examples/weather-watchboard.opus
 *.flac
 *.cu8
 *.c64

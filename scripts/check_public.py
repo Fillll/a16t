@@ -17,8 +17,7 @@ SIGNATURE = re.compile(
 PRIVATE_PARTS = {"runtime_data", "captures", "pipeline", ".vault-password", ".DS_Store"}
 PRIVATE_SUFFIXES = {".token", ".sqlite", ".sqlite3", ".db", ".zip", ".cu8", ".c64",
                    ".rttm", ".wav", ".opus", ".ogg", ".frames", ".mp3", ".pem", ".key"}
-PUBLIC_AUDIO = "examples/weather-broadcast.opus"
-PUBLIC_METADATA = "examples/weather-broadcast.json"
+PUBLIC_AUDIO = {"examples/weather-broadcast.opus", "examples/weather-watchboard.opus"}
 
 
 def git(*args):
@@ -40,13 +39,14 @@ def main():
     for name, oid in files.items():
         path = Path(name)
         if (set(path.parts) & PRIVATE_PARTS or path.name == ".env" or path.name.startswith(".env.")
-                or (path.suffix.lower() in PRIVATE_SUFFIXES and name != PUBLIC_AUDIO)):
+                or (path.suffix.lower() in PRIVATE_SUFFIXES and name not in PUBLIC_AUDIO)):
             issues.append(f"{name}: private file type or directory")
             continue
         data = git("cat-file", "blob", oid)
-        if name == PUBLIC_AUDIO:
+        if name in PUBLIC_AUDIO:
             try:
-                info = json.loads(git("cat-file", "blob", files[PUBLIC_METADATA]))
+                metadata = path.with_suffix(".json").as_posix()
+                info = json.loads(git("cat-file", "blob", files[metadata]))
                 valid = (
                     info["sha256"] == hashlib.sha256(data).hexdigest()
                     and info["source"] == "live" and info["frequency_hz"] > 0

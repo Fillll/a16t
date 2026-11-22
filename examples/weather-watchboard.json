@@ -1,0 +1,23 @@
+{
+  "source": "live",
+  "broadcast": "NOAA Weather Radio",
+  "station": "KHB-49",
+  "profile": "noaa-weather",
+  "frequency_hz": 162400000,
+  "clip_start_utc": "2026-11-22T03:28:56.320000+00:00",
+  "duration_seconds": 9.16,
+  "receiver": "RTL-SDR, R820T tuner",
+  "rf_gain_db": 43.9,
+  "rf_squelch_dbfs": -52,
+  "modulation": "narrow FM",
+  "capture_center_hz": 162200000,
+  "capture_rate_samples_per_second": 2400000,
+  "demodulation": "A16T live GNU Radio receiver",
+  "segmentation": "Rust 16 kHz detector, weather profile defaults",
+  "audio_encoding": "A16T default Ogg Opus mono, 20 kbit/s target",
+  "file_bytes": 19006,
+  "verification": "Two local recognizers recovered an extended forecast for the Bay Area and Central Coast with mostly cloudy conditions from the archived Opus clip.",
+  "usage": "Archival reception example. Consult the National Weather Service for current forecasts.",
+  "station_reference": "https://www.weather.gov/mtr/nwr",
+  "sha256": "8839ee914987c2cec3f0e1d75f8fcaf3a2be1375e4b0a334374cce606ba52b92"
+}

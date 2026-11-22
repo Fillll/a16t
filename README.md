@@ -2,7 +2,7 @@
 
 A16T is a local, receive-only radio monitor for RTL-SDR. Choose an aviation AM or marine narrow-FM profile, listen to individual channels in the browser, and review a compact recording of each detected transmission. The receiver keeps running when the browser closes.
 
-[Listen to 15 seconds of KHB49 weather radio](examples/weather-broadcast.opus), received off air with an RTL-SDR and demodulated by A16T. The excerpt includes static and a spoken tide forecast. [Capture settings and checksum](examples/weather-broadcast.json)
+[Listen to a real 9-second Bay Area forecast](examples/weather-watchboard.opus). A16T received KHB49 over the air, detected the transmission, and archived this 19 KB Opus clip with its standard settings. A second field example preserves a noisier tide forecast. [Capture settings and checksums](documentation/field-verification.md#public-field-samples)
 
 ## Try it without a radio
 
