@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+The Marine VHF Watchboard and Timeline show Channel 16 between 15 and 17, with a red label.
+
 New airband profiles cover SFO Tower and Oakland North Tower together, and ground control at both airports. The Oakland airband profile adds the published 124.900 MHz tower frequency and corrects the 125.350 MHz approach label to East.
 
 The Watchboard now includes a rolling one-hour timeline for every channel in the active profile, with live activity and playback of archived transmissions.

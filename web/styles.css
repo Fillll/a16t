@@ -8,6 +8,7 @@
   --text: #e5eeeb;
   --accent: #a4efc0;
   --warn: #f3c481;
+  --distress: #ff827f;
   --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
   --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font: 15px/1.4 var(--sans);
@@ -60,6 +61,7 @@ input[type=search] { border: 1px solid var(--line); border-radius: 3px; backgrou
 .channel-row:hover, .clip-row:hover { background: var(--surface); }
 .channel-row[aria-pressed=true], .clip-row[aria-pressed=true] { background: var(--selection); box-shadow: inset 2px 0 var(--accent); }
 .channel-name, .clip-label { display: block; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; line-height: 1.35; }
+.channel-row[data-channel="marine-16"] .channel-name { color: var(--distress); }
 .frequency { display: block; margin-top: 2px; }
 .channel-state { justify-self: end; }
 .channel-state.active { color: var(--accent); }

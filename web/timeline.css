@@ -9,7 +9,7 @@
   --drop: #a7b8b7;
   --drop-shape: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 12' preserveAspectRatio='none'%3E%3Cpath d='M0 6C15 6 22 5 34 2.5C43 .5 47 0 53 0C62 0 68 2.6 76 4.3C84 5.8 92 6 100 6C92 6 84 6.2 76 7.7C68 9.4 62 12 53 12C47 12 43 11.5 34 9.5C22 7 15 6 0 6Z'/%3E%3C/svg%3E");
 }
-#timeline-view [data-kind=distress] { --drop: #ff827f; }
+#timeline-view [data-kind=distress] { --drop: var(--distress); }
 #timeline-view [data-kind=urgency] { --drop: #ffb566; }
 #timeline-view [data-kind=safety] { --drop: #e3d77c; }
 #timeline-view [data-kind=port] { --drop: #75d7cb; }
@@ -48,6 +48,7 @@
 .tl-channel { align-self: center; min-width: 0; padding-left: 2px; }
 .tl-name { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); padding: 0; border: none; background: transparent; text-align: left; font: 10px/1 var(--mono); font-variant-numeric: tabular-nums; }
 .tl-name:disabled { color: var(--soft); opacity: 1; }
+.tl-row[data-channel="marine-16"] .tl-name { color: var(--distress); }
 .tl-name:enabled { font-weight: 650; }
 .tl-name:hover:enabled { text-decoration: underline; }
 .tl-lane {

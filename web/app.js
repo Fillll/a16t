@@ -7,6 +7,7 @@ const utcClock = new Intl.DateTimeFormat("en-GB", {
 const utcDate = new Intl.DateTimeFormat("en-GB", {
   timeZone: "UTC", day: "2-digit", month: "short", year: "numeric"
 });
+const marineChannelOrder = new Intl.Collator("en", {numeric: true});
 const channelNodes = new Map();
 const clipNodes = new Map();
 let snapshot = null;
@@ -61,7 +62,9 @@ function applySnapshot(state) {
   if (!state || !Array.isArray(state.channels) || !Array.isArray(state.clips)) {
     throw Error("Invalid receiver snapshot");
   }
-  snapshot = state;
+  snapshot = state.profile === "marine-vhf"
+    ? {...state, channels: [...state.channels].sort((a, b) => marineChannelOrder.compare(a.id, b.id))}
+    : state;
   lastUpdate = Date.now();
   revision++;
   if (!state.channels.some(channel => channel.id === selectedChannel)) {
@@ -78,7 +81,7 @@ function applySnapshot(state) {
   if (state.dropped_clips) archiveWarning.push(state.dropped_clips + (state.dropped_clips === 1 ? " dropped recording" : " dropped recordings"));
   if (state.archive_error) archiveWarning.push(state.archive_error);
   note($("archive-warning"), archiveWarning.join(" · "));
-  if (timelineVisible) window.a16tTimeline.update(state);
+  if (timelineVisible) window.a16tTimeline.update(snapshot);
   else {
     renderChannels();
     renderClips();
@@ -111,6 +114,7 @@ function updateRows(parent, cache, items, create, update) {
 function channelRow(id) {
   const button = element("button", "channel-row");
   button.type = "button";
+  button.dataset.channel = id;
   button.addEventListener("click", () => {
     if (selectedChannel !== id) stopListening();
     selectedChannel = id;
