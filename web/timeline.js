@@ -51,7 +51,7 @@ window.a16tTimeline = (() => {
           <p class="tl-inspector-position" role="status"></p>
           <div class="tl-inspector-recording" hidden>
             <p class="tl-inspector-kind"></p><p class="tl-inspector-meta" aria-live="polite"></p>
-            <audio controls preload="none" aria-label="Selected transmission" hidden></audio>
+            <audio controls preload="metadata" aria-label="Selected transmission" hidden></audio>
             <p class="tl-audio-note" role="status"></p>
             <section class="tl-transcript"><h3>Transcript</h3><p></p></section>
           </div>
@@ -294,7 +294,8 @@ window.a16tTimeline = (() => {
     const empty = get(".tl-inspector-empty");
     const station = get(".tl-inspector-frequency");
     body.hidden = !row;
-    empty.hidden = station.hidden = Boolean(row);
+    empty.hidden = Boolean(row);
+    station.hidden = !row;
     write(get("#tl-detail-channel"), row ? channelName(row.channel) : "Transmission");
     if (!row) { clearPlayer(); return; }
     write(station, frequency(row.channel) + " MHz");

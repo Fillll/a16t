@@ -89,6 +89,7 @@
 .tl-inspector-empty, .tl-inspector-position, .tl-audio-note, .tl-transcript p { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .tl-inspector-empty, .tl-inspector-position { color: var(--soft); }
 .tl-inspector-empty, .tl-inspector-body { margin-top: 12px; }
+.tl-inspector-recording { margin-top: 10px; }
 .tl-inspector-meta { margin-block: 5px 12px; overflow-wrap: anywhere; white-space: pre-line; }
 .tl-inspector-kind { font-size: 13px; }
 .tl-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
