@@ -2,7 +2,7 @@ mod media;
 mod speech;
 
 use anyhow::{Context, Result, ensure};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::Serialize;
 use std::{
     fs::{self, File},
@@ -62,6 +62,34 @@ pub struct Transmission {
     pub status: String,
     #[serde(skip)]
     pub transcript: Option<String>,
+    #[serde(skip)]
+    pub transcription_status: String,
+}
+
+const TRANSMISSION_COLUMNS: &str = "c.id, c.channel, c.frequency_hz, c.start_ms,
+    c.start_ms + (c.samples + 15) / 16 AS end_ms, c.status,
+    CASE WHEN c.transcription_status = 'complete' THEN c.transcript END, c.transcription_status";
+const TRANSMISSION_FILTER: &str = "c.samples > 0 AND c.status NOT IN ('recording', 'incomplete')";
+
+impl Transmission {
+    fn from_row(row: &Row<'_>) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: row.get(0)?,
+            channel: row.get(1)?,
+            frequency_hz: row.get(2)?,
+            start_ms: row.get(3)?,
+            end_ms: row.get(4)?,
+            status: row.get(5)?,
+            transcript: row.get(6)?,
+            transcription_status: row.get(7)?,
+        })
+    }
+}
+
+pub struct ChannelHistory {
+    pub recording: Transmission,
+    pub previous_id: Option<i64>,
+    pub next_id: Option<i64>,
 }
 
 impl Archive {
@@ -123,6 +151,8 @@ impl Archive {
             CREATE INDEX IF NOT EXISTS clips_time ON clips(start_ms DESC, id DESC);
             CREATE INDEX IF NOT EXISTS clips_end_time ON clips(start_ms + (samples + 15) / 16);
             CREATE INDEX IF NOT EXISTS clips_status ON clips(status, id);
+            CREATE INDEX IF NOT EXISTS clips_channel_time ON clips(channel, frequency_hz, start_ms, id)
+                WHERE samples > 0 AND status NOT IN ('recording', 'incomplete');
         ",
         )?;
         let store = Self(Arc::new(Inner {
@@ -414,28 +444,76 @@ impl Archive {
         let db = self.db()?;
         // 16 samples per millisecond. Round the exclusive endpoint up for a partial millisecond.
         // Ordering by this indexed endpoint also skips old clips in long-running archives.
-        let mut stmt = db.prepare(
-            "SELECT c.id, c.channel, c.frequency_hz, c.start_ms,
-                    c.start_ms + (c.samples + 15) / 16 AS end_ms, c.status,
-                    CASE WHEN c.transcription_status = 'complete' THEN c.transcript END
+        let mut stmt = db.prepare(&format!(
+            "SELECT {TRANSMISSION_COLUMNS}
              FROM clips c JOIN sessions s ON s.id = c.session_id
              WHERE end_ms > ?2 AND c.start_ms < ?3 AND s.source = ?1
-               AND c.samples > 0 AND c.status NOT IN ('recording', 'incomplete')
+               AND {TRANSMISSION_FILTER}
              ORDER BY end_ms, c.id",
-        )?;
+        ))?;
         Ok(stmt
-            .query_map((source, start_ms, end_ms), |r| {
-                Ok(Transmission {
-                    id: r.get(0)?,
-                    channel: r.get(1)?,
-                    frequency_hz: r.get(2)?,
-                    start_ms: r.get(3)?,
-                    end_ms: r.get(4)?,
-                    status: r.get(5)?,
-                    transcript: r.get(6)?,
-                })
-            })?
+            .query_map((source, start_ms, end_ms), Transmission::from_row)?
             .collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Read a selected or latest transmission, and its immediate chronological neighbors.
+    pub fn channel_history(
+        &self,
+        source: &str,
+        channel: &str,
+        frequency_hz: u64,
+        id: Option<i64>,
+    ) -> Result<Option<ChannelHistory>> {
+        let db = self.db()?;
+        let scope = format!(
+            "FROM clips c JOIN sessions s ON s.id = c.session_id
+             WHERE c.channel = ?1 AND c.frequency_hz = ?2 AND s.source = ?3
+               AND {TRANSMISSION_FILTER}"
+        );
+        let recording = match id {
+            Some(id) => db.query_row(
+                &format!("SELECT {TRANSMISSION_COLUMNS} {scope} AND c.id = ?4"),
+                (channel, frequency_hz, source, id),
+                Transmission::from_row,
+            ),
+            None => db.query_row(
+                &format!(
+                    "SELECT {TRANSMISSION_COLUMNS} {scope}
+                     ORDER BY c.start_ms DESC, c.id DESC LIMIT 1"
+                ),
+                (channel, frequency_hz, source),
+                Transmission::from_row,
+            ),
+        }
+        .optional()?;
+        let Some(recording) = recording else {
+            return Ok(None);
+        };
+
+        let neighbor = |comparison, order| {
+            db.query_row(
+                &format!(
+                    "SELECT c.id {scope} AND (c.start_ms, c.id) {comparison} (?4, ?5)
+                     ORDER BY c.start_ms {order}, c.id {order} LIMIT 1"
+                ),
+                (
+                    channel,
+                    frequency_hz,
+                    source,
+                    recording.start_ms,
+                    recording.id,
+                ),
+                |row| row.get(0),
+            )
+            .optional()
+        };
+        let previous_id = neighbor("<", "DESC")?;
+        let next_id = neighbor(">", "ASC")?;
+        Ok(Some(ChannelHistory {
+            recording,
+            previous_id,
+            next_id,
+        }))
     }
 
     /// Summarize permanent failures after this session's archive queue has drained.

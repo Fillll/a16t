@@ -19,6 +19,7 @@ window.a16tTimeline = (() => {
   let request = null;
   let timer = null;
   let selection = null;
+  let inspectorRequest = null;
   let failed = false;
   let recordingCount = 0;
   let newestRecording = null;
@@ -29,28 +30,44 @@ window.a16tTimeline = (() => {
   view.innerHTML = `
     <div class="tl-heading"><div class="tl-heading-line"><h2>Last 60 minutes</h2><p class="tl-summary"></p></div>
       <div class="tl-legend" aria-label="Transmission types"></div></div>
-    <div class="tl-scroll" tabindex="0" role="region" aria-label="Channel activity over the last hour">
-      <div class="tl-axis"><span class="tl-axis-label" aria-label="Channel">Ch.</span>
-        <div class="tl-scale" aria-label="Time in UTC"><span></span><span></span><span></span><span></span><span>Now</span></div></div>
-      <div class="tl-rows" role="list" aria-label="Channels in selected profile"></div>
+    <div class="tl-workspace">
+      <div class="tl-plot">
+        <div class="tl-scroll" tabindex="0" role="region" aria-label="Channel activity over the last hour">
+          <div class="tl-axis"><span class="tl-axis-label" aria-label="Channel">Ch.</span>
+            <div class="tl-scale" aria-label="Time in UTC"><span></span><span></span><span></span><span></span><span>Now</span></div></div>
+          <div class="tl-rows" role="list" aria-label="Channels in selected profile"></div>
+        </div>
+        <p class="tl-feedback" role="status"></p>
+      </div>
+      <aside class="tl-inspector" aria-labelledby="tl-detail-channel" tabindex="-1">
+        <header class="tl-inspector-head"><h2 id="tl-detail-channel">Transmission</h2>
+          <p class="tl-inspector-frequency" hidden></p></header>
+        <p class="tl-inspector-empty" role="status">Select a drop or channel to see its transmissions.</p>
+        <div class="tl-inspector-body" hidden>
+          <nav class="tl-nav" aria-label="Channel history">
+            <button type="button" class="tl-prev" aria-disabled="true">← Previous</button>
+            <button type="button" class="tl-next" aria-disabled="true">Next →</button>
+          </nav>
+          <p class="tl-inspector-position" role="status"></p>
+          <div class="tl-inspector-recording" hidden>
+            <p class="tl-inspector-kind"></p><p class="tl-inspector-meta" aria-live="polite"></p>
+            <audio controls preload="none" aria-label="Selected transmission" hidden></audio>
+            <p class="tl-audio-note" role="status"></p>
+            <section class="tl-transcript"><h3>Transcript</h3><p></p></section>
+          </div>
+        </div>
+      </aside>
     </div>
-    <p class="tl-feedback" role="status"></p>
     <div id="tl-tip" role="tooltip" hidden>
       <strong class="tl-tip-kind"></strong><span class="tl-tip-source"></span>
       <p class="tl-tip-meta"></p><p class="tl-tip-time"></p><p class="tl-tip-preview"></p>
-    </div>
-    <dialog class="tl-dialog" aria-labelledby="tl-detail-channel">
-      <div class="tl-dialog-head"><div><p class="eyebrow">Transmission</p><h3 id="tl-detail-channel"></h3></div>
-        <button type="button" class="tl-close" autofocus>Close</button></div>
-      <label class="tl-picker-label" for="tl-picker">Recording on this channel</label>
-      <select id="tl-picker"></select><p class="tl-dialog-kind"></p><p class="tl-details"></p><p class="tl-dialog-preview"></p>
-      <audio controls preload="none" aria-label="Timeline recording"></audio><p class="tl-audio-note" role="status"></p>
-    </dialog>`;
+    </div>`;
   const get = selector => view.querySelector(selector);
   const list = get(".tl-rows");
   const ticks = [...view.querySelectorAll(".tl-scale span")];
-  const dialog = get("dialog");
-  const picker = get("select");
+  const inspector = get(".tl-inspector");
+  const previous = get(".tl-prev");
+  const nextClip = get(".tl-next");
   const player = get("audio");
   const tip = get("#tl-tip");
   const tipKind = get(".tl-tip-kind");
@@ -138,7 +155,7 @@ window.a16tTimeline = (() => {
   function showTip(mark) {
     clearTimeout(tipTimeout);
     const item = transmission(mark);
-    if (!item || dialog.open) { hideTip(); return; }
+    if (!item) { hideTip(); return; }
     const {row, clip, live} = item;
     if (tipMark !== mark) tipMark?.removeAttribute("aria-describedby");
     tipMark = mark;
@@ -201,8 +218,9 @@ window.a16tTimeline = (() => {
     if (!mark) return;
     const item = transmission(mark);
     if (!item) return;
-    if (item.live) showTip(mark);
+    if (item.live) inspect(item.row, null, item.clip.start_ms);
     else inspect(item.row, item.clip.id);
+    revealInspector(event);
   });
   document.addEventListener("keydown", event => { if (event.key === "Escape") hideTip(); });
   document.addEventListener("pointerdown", event => {
@@ -231,50 +249,138 @@ window.a16tTimeline = (() => {
     }
   }
 
-  function showClip(row, clip) {
-    selection = {channel: row.channel.id, id: clip.id};
-    picker.value = String(clip.id);
-    write(get("#tl-detail-channel"), channelName(row.channel));
-    const kind = kindOf(clip.kind);
-    const classification = get(".tl-dialog-kind");
+  function showClip(row, clip, live) {
+    const kind = kindOf(live ? row.channel.default_kind : clip.kind);
+    const classification = get(".tl-inspector-kind");
     classification.dataset.kind = kind;
-    write(classification, [kinds.get(kind), evidence(clip)].filter(Boolean).join(" · "));
-    write(get(".tl-dialog-preview"), clip.preview ? "Transcript · " + clip.preview : "");
+    write(classification, live ? "Receiving" : [kinds.get(kind), evidence(clip)].filter(Boolean).join(" · "));
     const duration = (clip.end_ms - clip.start_ms) / 1000;
-    write(get(".tl-details"), `${date.format(clip.start_ms)} · ${timeLabel(clip)} · ${duration.toFixed(2)} s · ${frequency(row.channel)} MHz`);
-    const available = ["queued", "ready", "failed"].includes(clip.status);
+    const meta = get(".tl-inspector-meta");
+    meta.setAttribute("aria-live", live ? "off" : "polite");
+    write(meta, `${date.format(clip.start_ms)}\n${timeLabel(clip)}\n${duration.toFixed(2)} s`);
+    const available = !live && ["queued", "ready", "failed"].includes(clip.status);
     player.hidden = !available;
     const path = "/api/clips/" + encodeURIComponent(clip.id) + "/audio";
     if (!available || player.getAttribute("src") !== path) {
       clearPlayer();
       if (available) player.src = path;
       const expired = ["expiring", "expired"].includes(clip.status);
-      write(get(".tl-audio-note"), available ? "" : expired ? "Recording audio has expired." : "Recording audio unavailable.");
+      write(get(".tl-audio-note"), available || live ? "" : expired ? "Recording audio has expired." : "Recording audio unavailable.");
     }
+    get(".tl-transcript").hidden = live;
+    const pending = ["pending", "sending"].includes(clip.transcription_status);
+    write(get(".tl-transcript p"), clip.transcript || (pending ? "Awaiting transcription…" : "No transcript available."));
   }
 
-  function inspect(row, id) {
-    const clip = row.clips.get(id);
-    if (!clip) return;
-    hideTip();
-    picker.replaceChildren();
-    for (const item of row.clips.values()) {
-      const option = document.createElement("option");
-      option.value = String(item.id);
-      option.textContent = timeLabel(item) + " · " + kinds.get(kindOf(item.kind));
-      picker.append(option);
+  function selectMarks(old) {
+    if (old) {
+      const row = rows.get(old.channel);
+      row?.node.removeAttribute("data-selected");
+      row?.name.setAttribute("aria-pressed", "false");
+      row?.marks.get(old.id)?.setAttribute("aria-pressed", "false");
+      row?.live.setAttribute("aria-pressed", "false");
     }
-    picker.hidden = get(".tl-picker-label").hidden = row.clips.size < 2;
-    showClip(row, clip);
-    if (!dialog.open) dialog.showModal();
-  }
-
-  get(".tl-close").addEventListener("click", () => dialog.close());
-  dialog.addEventListener("close", () => { selection = null; clearPlayer(); });
-  picker.addEventListener("change", () => {
     const row = rows.get(selection?.channel);
-    const clip = row?.clips.get(Number(picker.value));
-    if (clip) showClip(row, clip);
+    if (!row) return;
+    row.node.dataset.selected = "true";
+    row.name.setAttribute("aria-pressed", "true");
+    row.marks.get(selection.id)?.setAttribute("aria-pressed", "true");
+    row.live.setAttribute("aria-pressed", String(selection.liveSince === row.channel.active_since_ms && selection.liveSince !== null));
+  }
+
+  function renderInspector() {
+    const row = rows.get(selection?.channel);
+    const body = get(".tl-inspector-body");
+    const empty = get(".tl-inspector-empty");
+    const station = get(".tl-inspector-frequency");
+    body.hidden = !row;
+    empty.hidden = station.hidden = Boolean(row);
+    write(get("#tl-detail-channel"), row ? channelName(row.channel) : "Transmission");
+    if (!row) { clearPlayer(); return; }
+    write(station, frequency(row.channel) + " MHz");
+    const {data, liveSince, error, id} = selection;
+    const live = liveSince !== null;
+    const channel = row.channel;
+    const receiving = live && channel.active_since_ms === liveSince && Date.now() - channel.last_sample_ms < 5000;
+    const clip = live
+      ? (receiving ? {start_ms: liveSince, end_ms: channel.active_until_ms} : null)
+      : (data?.clip || row.clips.get(id));
+    previous.setAttribute("aria-disabled", String(previousId() == null));
+    nextClip.setAttribute("aria-disabled", String(live || data?.next_id == null));
+    let message = "";
+    if (error) message = "Couldn’t update channel history. Retrying…";
+    else if (live && !receiving) message = "Waiting for the recording…";
+    else if (!data && !clip) message = "Loading channel history…";
+    else if (!clip) message = "No recordings for this channel yet.";
+    else if (!live && clip.end_ms <= bounds().start) message = "Outside the last 60 minutes";
+    write(get(".tl-inspector-position"), message);
+    get(".tl-inspector-recording").hidden = !clip;
+    if (clip) showClip(row, clip, live);
+    else clearPlayer();
+  }
+
+  function previousId() {
+    if (!selection?.data) return null;
+    if (selection.liveSince === null) return selection.data.previous_id;
+    const clip = selection.data.clip;
+    return clip && clip.start_ms < selection.liveSince ? clip.id : null;
+  }
+
+  function inspect(row, id = null, liveSince = null) {
+    hideTip();
+    const old = selection;
+    inspectorRequest?.abort();
+    inspectorRequest = null;
+    selection = {channel: row.channel.id, id, liveSince, data: null, error: false};
+    inspector.scrollTop = 0;
+    selectMarks(old);
+    renderInspector();
+    refreshInspector();
+  }
+
+  function revealInspector(event) {
+    if (!event.detail) inspector.focus({preventScroll: true});
+    if (window.matchMedia("(max-width: 750px)").matches) inspector.scrollIntoView({block: "nearest"});
+  }
+
+  async function refreshInspector() {
+    if (!visible || !selection || inspectorRequest) return;
+    const selected = selection;
+    const controller = new AbortController();
+    inspectorRequest = controller;
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    const path = "/api/channels/" + encodeURIComponent(selected.channel) + "/history";
+    const query = selected.id === null ? "" : "?id=" + encodeURIComponent(selected.id);
+    try {
+      const response = await fetch(path + query, {signal: controller.signal, cache: "no-store"});
+      if (!response.ok) throw Error("Channel history unavailable");
+      const data = await response.json();
+      if (inspectorRequest !== controller) return;
+      const old = {...selected};
+      selected.data = data;
+      selected.error = false;
+      if (selected.liveSince === null) selected.id = data.clip?.id ?? null;
+      else if (data.clip?.start_ms === selected.liveSince) {
+        selected.id = data.clip.id;
+        selected.liveSince = null;
+      }
+      if (old.id !== selected.id || old.liveSince !== selected.liveSince) selectMarks(old);
+    } catch {
+      if (inspectorRequest === controller) selected.error = true;
+    } finally {
+      clearTimeout(timeout);
+      if (inspectorRequest === controller) { inspectorRequest = null; renderInspector(); }
+    }
+  }
+
+  function moveTo(id) {
+    const row = rows.get(selection?.channel);
+    if (row && id != null) inspect(row, id);
+  }
+
+  previous.addEventListener("click", () => moveTo(previousId()));
+  nextClip.addEventListener("click", () => {
+    if (selection?.liveSince === null) moveTo(selection.data?.next_id);
   });
   player.addEventListener("error", () => {
     if (player.hasAttribute("src")) write(get(".tl-audio-note"), "Recording audio unavailable.");
@@ -285,13 +391,13 @@ window.a16tTimeline = (() => {
     node.className = "tl-row";
     node.setAttribute("role", "listitem");
     node.dataset.channel = channel.id;
-    node.innerHTML = `<div class="tl-channel"><button type="button" class="tl-name" disabled></button></div>
+    node.innerHTML = `<div class="tl-channel"><button type="button" class="tl-name" aria-pressed="false"></button></div>
       <div class="tl-lane"><button type="button" class="tl-live" hidden></button></div>`;
     const row = {node, channel, clips: new Map(), marks: new Map(), name: node.querySelector("button"),
       lane: node.querySelector(".tl-lane"), live: node.querySelector(".tl-live")};
-    row.name.addEventListener("click", () => {
-      const latest = [...row.clips.keys()].pop();
-      if (latest != null) inspect(row, latest);
+    row.name.addEventListener("click", event => {
+      inspect(row);
+      revealInspector(event);
     });
     return row;
   }
@@ -332,6 +438,8 @@ window.a16tTimeline = (() => {
         row.live.dataset.kind = kindOf(ch.default_kind);
         row.live.setAttribute("aria-label", channelName(ch) + " · " + kinds.get(row.live.dataset.kind) +
           " · Receiving since " + seconds.format(ch.active_since_ms) + " UTC");
+        row.live.setAttribute("aria-pressed", String(selection?.channel === ch.id &&
+          selection.liveSince === ch.active_since_ms));
       }
       if (tipMark === row.live) showTip(row.live);
     }
@@ -373,20 +481,21 @@ window.a16tTimeline = (() => {
           row.marks.set(clip.id, mark);
         }
         mark.dataset.kind = kindOf(clip.kind);
+        mark.setAttribute("aria-pressed", String(selection?.channel === row.channel.id && selection.id === clip.id));
         mark.setAttribute("aria-label", channelName(row.channel) + " · " + kinds.get(mark.dataset.kind) + " · " + timeLabel(clip));
         position(mark, clip.start_ms, clip.end_ms, range);
         if (tipMark === mark) showTip(mark);
       }
-      row.name.disabled = !row.clips.size;
+      row.node.dataset.hasClips = String(row.clips.size > 0);
     }
     const counts = [`${rows.size} channel${rows.size === 1 ? "" : "s"}`];
     if (history) counts.push(`${recordingCount} recording${recordingCount === 1 ? "" : "s"}`);
     counts.push("UTC");
     write(get(".tl-summary"), counts.join(" · "));
-    if (selection) {
+    if (selection?.liveSince != null) {
       const row = rows.get(selection.channel);
-      const current = row?.clips.get(selection.id);
-      if (current) showClip(row, current);
+      const saved = [...(row?.clips.values() || [])].find(clip => clip.start_ms === selection.liveSince);
+      if (saved) inspect(row, saved.id);
     }
     renderFeedback(renderLive(range));
   }
@@ -424,6 +533,12 @@ window.a16tTimeline = (() => {
     }
   }
 
+  function refreshVisible() {
+    if (document.hidden) return;
+    refresh();
+    refreshInspector();
+  }
+
   function update(next) {
     state = next;
     if (!visible || !state) return;
@@ -436,14 +551,19 @@ window.a16tTimeline = (() => {
       history = null;
       failed = false;
       hideTip();
-      if (dialog.open) dialog.close();
+      inspectorRequest?.abort(); inspectorRequest = null;
+      const old = selection;
+      selection = null;
+      selectMarks(old);
+      renderInspector();
       syncRows(state.channels);
       renderHistory();
       refresh();
     } else {
       for (const ch of state.channels) rows.get(ch.id).channel = ch;
       renderFeedback(renderLive(bounds()));
-      if (newest !== newestRecording && !document.hidden) refresh();
+      if (selection?.liveSince != null) renderInspector();
+      if (newest !== newestRecording) refreshVisible();
     }
     newestRecording = newest;
   }
@@ -454,18 +574,19 @@ window.a16tTimeline = (() => {
     update(next);
     fitLanes();
     renderHistory();
-    refresh();
-    timer = setInterval(() => { if (!document.hidden) refresh(); }, 5000);
+    renderInspector();
+    refreshVisible();
+    timer = setInterval(refreshVisible, 5000);
   }
 
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+  document.addEventListener("visibilitychange", refreshVisible);
 
   function hide() {
     visible = false;
     hideTip();
     request?.abort(); request = null;
+    inspectorRequest?.abort(); inspectorRequest = null;
     clearInterval(timer);
-    if (dialog.open) dialog.close();
     clearPlayer();
   }
 

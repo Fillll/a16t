@@ -12,6 +12,7 @@ import sys
 import tempfile
 import time
 import unittest
+from urllib.error import HTTPError
 from urllib.request import ProxyHandler, build_opener
 
 
@@ -164,6 +165,39 @@ class ReplayTest(unittest.TestCase):
                                  (clip["id"], "urgency", "transcript"))
                 self.assertEqual(updated["preview"], text[:120] + "…")
                 self.assertNotIn("transcript", updated)
+
+                with sqlite3.connect(archive / "archive.sqlite3") as db:
+                    older_id = db.execute(
+                        """INSERT INTO clips(session_id, channel, frequency_hz, start_ms,
+                                             samples, status, keep_wav, provider, model, transcription_status)
+                           SELECT session_id, channel, frequency_hz, start_ms - 7200000,
+                                  samples, 'expired', 0, 'none', '', 'disabled'
+                           FROM clips WHERE id=?""",
+                        (clip["id"],),
+                    ).lastrowid
+                history_path = "/api/channels/" + channel["id"] + "/history"
+                with HTTP.open(base + history_path, timeout=4) as response:
+                    self.assertEqual(response.headers["Cache-Control"], "no-store")
+                    detail = json.load(response)
+                self.assertEqual((detail["previous_id"], detail["next_id"]), (older_id, None))
+                self.assertEqual(detail["clip"]["transcript"], text)
+                self.assertEqual(detail["clip"]["kind"], "urgency")
+                self.assertEqual(detail["clip"]["transcription_status"], "complete")
+                with HTTP.open(base + history_path + f"?id={older_id}", timeout=4) as response:
+                    older = json.load(response)
+                self.assertEqual((older["previous_id"], older["next_id"]), (None, clip["id"]))
+                self.assertEqual(older["clip"]["status"], "expired")
+                self.assertEqual(older["clip"]["start_ms"], clip["start_ms"] - 7200000)
+
+                empty_channel = next(ch["id"] for ch in state["channels"]
+                                     if ch["id"] != channel["id"] and ch["id"] != "marine-16")
+                empty_path = "/api/channels/" + empty_channel + "/history"
+                with HTTP.open(base + empty_path, timeout=4) as response:
+                    self.assertEqual(json.load(response),
+                                     {"clip": None, "previous_id": None, "next_id": None})
+                with self.assertRaises(HTTPError) as wrong_channel:
+                    HTTP.open(base + empty_path + f"?id={clip['id']}", timeout=4)
+                self.assertEqual(wrong_channel.exception.code, 404)
 
             with run_receiver(archive, "noaa-weather") as base:
                 with HTTP.open(base + "/api/timeline", timeout=4) as response:

@@ -4,7 +4,9 @@ The local browser Watchboard displays the receiver profile, source and reported 
 
 Choose **Timeline** in the header to see the last 60 minutes. Every channel in the running profile has a row. The 48-channel Marine VHF profile appears in channel-number order in both views. Channel 16's label is red. Other profiles follow their configured order. The same time scale applies to every timeline row so overlapping marks show simultaneous activity. Open `/#timeline` to go directly to this view.
 
-Each channel has a thin line. A colored drop marks a transmission, with a minimum visible width for short calls. Hover over a drop or focus it with the keyboard for its type, channel, UTC time, duration and a short transcript excerpt when available. Select a recorded drop to play its audio. Selecting the channel number gives access to recordings whose drops overlap.
+Each channel has a thin line. A colored drop marks a transmission, with a minimum visible width for short calls. Hover over a drop or focus it with the keyboard for its type, channel, UTC time, duration and a short transcript excerpt when available.
+
+Select a drop to see its audio and full transcript in the transmission panel alongside the plot. On a narrow screen the panel appears below the plot. Selecting a channel number opens that channel's newest recording, and **Previous** and **Next** step through its archive even outside the hour plotted. Expired recordings keep their time and transcript. A selected live drop shows its receiving status until the recording is saved.
 
 The legend identifies distress (MAYDAY), urgency (PAN-PAN), safety (SÉCURITÉ), port communications and other traffic. A completed transcript can identify an explicit priority call or port communication. When the words do not identify a type, the view uses the channel's configured purpose where available. The details show which source supplied the label. Mixed-use channels such as 16 stay unclassified without supporting words.
 

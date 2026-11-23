@@ -77,6 +77,85 @@ fn busy_timelines_cover_more_than_the_recent_recording_list() -> Result<()> {
 }
 
 #[test]
+fn channel_history_crosses_hours_and_sessions_in_stable_capture_order() -> Result<()> {
+    let root = TempDir::new()?;
+    let archive = store(&root, u64::MAX);
+    let earlier_profile = archive.start_session("four", "live")?;
+    let current = archive.start_session("forty-eight", "live")?;
+    let replay = archive.start_session("forty-eight", "replay")?;
+    let latest = archive.save(current, "one", 100, 9_000_000, &[0; 16])?;
+    let first_tie = archive.save(earlier_profile, "one", 100, 8_000_000, &[0; 16])?;
+    let old = archive.save(earlier_profile, "one", 100, 1_000, &[0; 1601])?;
+    let second_tie = archive.save(current, "one", 100, 8_000_000, &[0; 16])?;
+    let wrong_source = archive.save(replay, "one", 100, 10_000_000, &[0; 16])?;
+    let wrong_frequency = archive.save(current, "one", 101, 9_000_001, &[0; 16])?;
+    let wrong_channel = archive.save(current, "two", 100, 9_000_001, &[0; 16])?;
+    let incomplete = archive.save(current, "one", 100, 8_500_000, &[0; 16])?;
+
+    archive.expire(old)?;
+    archive.db()?.execute(
+        "UPDATE clips SET transcription_status='complete', transcript='Example full transcript' WHERE id=?1",
+        [old],
+    )?;
+    archive.db()?.execute(
+        "UPDATE clips SET status='incomplete' WHERE id=?1",
+        [incomplete],
+    )?;
+
+    let selected = archive.channel_history("live", "one", 100, None)?.unwrap();
+    assert_eq!(
+        (
+            selected.recording.id,
+            selected.previous_id,
+            selected.next_id
+        ),
+        (latest, Some(second_tie), None)
+    );
+    let selected = archive
+        .channel_history("live", "one", 100, Some(second_tie))?
+        .unwrap();
+    assert_eq!(
+        (selected.previous_id, selected.next_id),
+        (Some(first_tie), Some(latest))
+    );
+    let selected = archive
+        .channel_history("live", "one", 100, Some(first_tie))?
+        .unwrap();
+    assert_eq!(
+        (selected.previous_id, selected.next_id),
+        (Some(old), Some(second_tie))
+    );
+    let selected = archive
+        .channel_history("live", "one", 100, Some(old))?
+        .unwrap();
+    assert_eq!(
+        (selected.previous_id, selected.next_id),
+        (None, Some(first_tie))
+    );
+    assert_eq!(selected.recording.status, "expired");
+    assert_eq!(selected.recording.end_ms, 1101);
+    assert_eq!(selected.recording.transcription_status, "complete");
+    assert_eq!(
+        selected.recording.transcript.as_deref(),
+        Some("Example full transcript")
+    );
+
+    for id in [wrong_source, wrong_frequency, wrong_channel, incomplete] {
+        assert!(
+            archive
+                .channel_history("live", "one", 100, Some(id))?
+                .is_none()
+        );
+    }
+    assert!(
+        archive
+            .channel_history("live", "three", 100, None)?
+            .is_none()
+    );
+    Ok(())
+}
+
+#[test]
 fn interruption_after_wav_write_recovers_one_playable_clip() -> Result<()> {
     let root = TempDir::new()?;
     let archive = store(&root, u64::MAX);

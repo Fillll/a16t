@@ -3,7 +3,7 @@ use a16t::{archive::Transmission, classification::classify};
 use axum::{
     Json, Router,
     body::Body,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{StatusCode, header},
     response::{
         Html, IntoResponse, Response,
@@ -12,7 +12,7 @@ use axum::{
     routing::get,
 };
 use bytes::Bytes;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::HashMap, convert::Infallible, time::Duration};
 use tokio::sync::broadcast::error::RecvError;
@@ -112,6 +112,86 @@ async fn timeline(State(app): State<App>) -> Response {
     )
         .into_response()
 }
+
+#[derive(Deserialize)]
+struct HistoryAnchor {
+    id: Option<i64>,
+}
+
+#[derive(Serialize)]
+struct ChannelClip<'a> {
+    #[serde(flatten)]
+    recording: &'a Transmission,
+    transcript: Option<&'a str>,
+    transcription_status: &'a str,
+    kind: &'static str,
+    kind_source: &'static str,
+}
+
+#[derive(Default, Serialize)]
+struct HistoryResponse<'a> {
+    clip: Option<ChannelClip<'a>>,
+    previous_id: Option<i64>,
+    next_id: Option<i64>,
+}
+
+async fn channel_history(
+    State(app): State<App>,
+    Path(channel): Path<String>,
+    Query(anchor): Query<HistoryAnchor>,
+) -> Response {
+    let config = app
+        .health
+        .lock()
+        .unwrap()
+        .channels
+        .iter()
+        .find(|item| item.id == channel)
+        .map(|item| (item.frequency_hz, item.default_kind));
+    let Some((frequency_hz, default_kind)) = config else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    let archive = app.archive.clone();
+    let id = anchor.id;
+    let history = match tokio::task::spawn_blocking(move || {
+        archive.channel_history(&app.source, &channel, frequency_hz, id)
+    })
+    .await
+    {
+        Ok(Ok(history)) => history,
+        Ok(Err(error)) => {
+            eprintln!("Channel history read failed: {error}");
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        }
+        Err(error) => {
+            eprintln!("Channel history worker failed: {error}");
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        }
+    };
+    let response = match &history {
+        Some(history) => {
+            let recording = &history.recording;
+            let transcript = recording.transcript.as_deref();
+            let (kind, kind_source) = classify(transcript, default_kind);
+            HistoryResponse {
+                clip: Some(ChannelClip {
+                    recording,
+                    transcript,
+                    transcription_status: &recording.transcription_status,
+                    kind,
+                    kind_source,
+                }),
+                previous_id: history.previous_id,
+                next_id: history.next_id,
+            }
+        }
+        None if id.is_some() => return StatusCode::NOT_FOUND.into_response(),
+        None => HistoryResponse::default(),
+    };
+    ([(header::CACHE_CONTROL, "no-store")], Json(response)).into_response()
+}
+
 async fn events(State(app): State<App>) -> impl IntoResponse {
     Sse::new(async_stream::stream! {
         let mut tick = tokio::time::interval(Duration::from_millis(350));
@@ -229,6 +309,7 @@ pub fn router(app: App) -> Router {
         )
         .route("/api/state", get(state))
         .route("/api/timeline", get(timeline))
+        .route("/api/channels/{channel}/history", get(channel_history))
         .route("/events", get(events))
         .route("/api/clips/{id}/audio", get(clip))
         .route("/api/listen/{channel}", get(listen))
