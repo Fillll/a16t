@@ -1,6 +1,6 @@
 # Watchboard
 
-The local browser Watchboard displays the receiver profile, source and reported state, channel activity, and recent recordings. It fetches an initial snapshot from `/api/state`, listens to `/events`, and polls the state endpoint when the stream is unavailable. Recording continues in the receiver when the page closes. Times are UTC.
+The Watchboard and Timeline share a compact header with the active profile and connection status. The status also shows when the receiver is starting, stopped, or reporting an error. The receiver selects its profile at startup. The browser fetches an initial snapshot from `/api/state`, listens to `/events`, and polls the state endpoint when the stream is unavailable. Recording continues in the receiver when the page closes. Times are UTC.
 
 Choose **Timeline** in the header to see the last 60 minutes. Every channel in the running profile has a row. The 48-channel Marine VHF profile appears in channel-number order in both views. Channel 16's label is red. Other profiles follow their configured order. The same time scale applies to every timeline row so overlapping marks show simultaneous activity. Open `/#timeline` to go directly to this view.
 

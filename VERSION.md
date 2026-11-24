@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+The Watchboard and Timeline share a compact header that displays the active profile.
+
 The Timeline shows the selected transmission in a side panel with audio, the full transcript and Previous and Next navigation through the channel's archive.
 
 The Marine VHF Watchboard and Timeline show Channel 16 between 15 and 17, with a red label.

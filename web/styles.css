@@ -22,29 +22,31 @@ button, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
 button:focus-visible, input:focus-visible, audio:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 button:disabled { cursor: default; opacity: .55; }
-.masthead { min-height: 62px; padding: 0 clamp(16px, 4vw, 64px); display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); }
+.masthead { min-height: 44px; padding: 0 clamp(16px, 4vw, 64px); display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); }
 .brand { display: inline-flex; align-items: center; gap: 8px; font: 500 24px/1 ui-monospace, "SF Mono", Consolas, monospace; letter-spacing: -.045em; }
-.view-nav { display: flex; align-self: stretch; margin: 0 auto 0 24px; gap: 20px; }
+.view-nav { display: flex; align-self: stretch; margin: 0 auto 0 clamp(0px, 2vw, 24px); gap: clamp(12px, 2vw, 20px); }
 .view-nav a { display: inline-flex; align-items: center; color: var(--soft); border-block: 2px solid transparent; text-decoration: none; font-size: 13px; font-weight: 550; }
 .view-nav a[aria-current=page] { color: var(--text); border-bottom-color: #65d0d7; }
 .view-nav a:hover { color: var(--text); }
 .view-nav a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.mast-details { display: flex; gap: 20px; align-items: center; font: 12px var(--mono); color: var(--soft); }
+.mast-profile { display: flex; min-width: 0; align-items: baseline; gap: 7px; font: 12px var(--mono); }
+.mast-profile dt { font-size: 9px; }
+.mast-profile dd { margin: 0; font: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mast-details { display: flex; gap: clamp(9px, 1.7vw, 20px); align-items: center; font: 12px var(--mono); color: var(--soft); white-space: nowrap; }
 #connection { display: inline-flex; align-items: center; gap: 7px; }
 #connection::before { content: ""; height: 7px; width: 7px; border-radius: 50%; border: 1px solid currentColor; }
 #connection.good::before { background: var(--accent); border-color: var(--accent); }
 #connection.warn { color: var(--warn); }
-#clock { font-variant-numeric: tabular-nums; border-left: 1px solid var(--line); padding-left: 20px; }
+#clock { font-variant-numeric: tabular-nums; border-left: 1px solid var(--line); padding-left: clamp(9px, 1.7vw, 20px); }
 main { max-width: 1680px; margin: auto; padding: 0 clamp(16px, 4vw, 64px) 36px; }
-.overview { padding: 29px 0 25px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; border-bottom: 1px solid var(--line); }
+.overview { padding-block: 10px; border-bottom: 1px solid var(--line); }
 h1, h2, h3, p, dl, dd { margin: 0; }
-h1 { font-size: 40px; line-height: 1.04; font-weight: 615; letter-spacing: -.065em; }
+h1 { font-size: 27px; line-height: 1.04; font-weight: 615; letter-spacing: -.065em; }
 h2 { font-size: 22px; font-weight: 600; letter-spacing: -.045em; }
 h3 { font-size: 19px; font-weight: 600; letter-spacing: -.035em; overflow-wrap: anywhere; }
-.overview-data, .metrics { display: flex; flex-wrap: wrap; gap: 14px 28px; }
+.metrics { display: flex; flex-wrap: wrap; gap: 14px 28px; }
 dt, .eyebrow, .channel-header, .large-controls label { font: 10px/1.4 var(--mono); letter-spacing: .075em; text-transform: uppercase; color: var(--soft); }
 dd { margin-top: 4px; font: 13px/1.45 var(--mono); overflow-wrap: anywhere; }
-.overview-data dd { max-width: min(30vw, 40ch); }
 .workspace { display: grid; grid-template-columns: minmax(0, 1.33fr) minmax(0, 1fr); gap: 35px; }
 .workspace > section { min-width: 0; }
 .archive { border-left: 1px solid var(--line); padding-left: 35px; }
@@ -95,17 +97,10 @@ input[type=search] { border: 1px solid var(--line); border-radius: 3px; backgrou
 @media (max-width: 900px) {
   .workspace { gap: 18px; grid-template-columns: minmax(0,1.2fr) minmax(0,1fr); }
   .archive { padding-left: 18px; }
-  .overview-data { gap: 15px; }
   .metrics { display: grid; grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 700px) {
-  .masthead { min-height: 48px; }
   .mast-details { gap: 9px; font-size: 10px; }
-  #clock { padding-left: 9px; }
-  .overview { display: block; padding: 18px 0; }
-  h1 { font-size: 32px; }
-  .overview-data { margin-top: 14px; gap: 14px 22px; }
-  .overview-data dd { max-width: 100%; font-size: 12px; }
   .workspace { display: block; }
   .archive { border-left: 0; padding-left: 0; }
   .section-head { padding-top: 20px; }
@@ -115,19 +110,20 @@ input[type=search] { border: 1px solid var(--line); border-radius: 3px; backgrou
   .metrics { grid-template-columns: repeat(auto-fit,minmax(110px,1fr)); }
 }
 @media (max-width: 360px) { .channel-header, .channel-row { grid-template-columns: minmax(0,1.4fr) minmax(60px,1fr) 51px; gap: 7px; } }
-@media (max-width: 560px) {
-  .masthead { flex-wrap: wrap; gap: 0 12px; padding-top: 9px; }
-  .view-nav { order: 1; width: 100%; gap: 22px; margin: 0; }
+@media (max-width: 620px) {
+  .masthead { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; gap: 0 10px; padding-top: 4px; }
+  .brand { grid-area: 1 / 1; min-height: 32px; }
+  .mast-details { grid-area: 1 / 2 / 2 / 4; justify-self: end; }
+  .view-nav { grid-area: 2 / 1 / 3 / 3; margin: 0; }
   .view-nav a { min-height: 44px; }
+  .mast-profile { grid-area: 2 / 3; max-width: 43vw; font-size: 11px; }
+}
+@media (max-width: 380px) {
+  .mast-profile dt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+}
+@media (max-width: 350px) {
+  #clock { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before { transition: none !important; } }
 
-.timeline-page .masthead { min-height: 44px; }
 .timeline-page main { padding-bottom: 12px; }
-.timeline-page .overview { padding-block: 10px; align-items: center; }
-.timeline-page h1 { font-size: 27px; }
-.timeline-page .overview-data dd { margin-top: 1px; }
-@media (max-width: 700px) {
-  .timeline-page .overview { display: flex; flex-wrap: wrap; gap: 6px 14px; }
-  .timeline-page .overview-data { margin-top: 0; gap: 4px 12px; }
-}

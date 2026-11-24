@@ -74,9 +74,10 @@ function applySnapshot(state) {
   if (!state.clips.some(clip => clip.id === selectedClip)) {
     selectedClip = state.clips[0]?.id ?? null;
   }
-  setText($("profile"), state.profile || "—");
-  setText($("source"), state.source || "—");
-  setText($("receiver"), state.receiver || "—");
+  const profile = $("profile");
+  const profileName = state.profile || "—";
+  setText(profile, profileName);
+  if (profile.title !== profileName) profile.title = profileName;
   const archiveWarning = [];
   if (state.dropped_clips) archiveWarning.push(state.dropped_clips + (state.dropped_clips === 1 ? " dropped recording" : " dropped recordings"));
   if (state.archive_error) archiveWarning.push(state.archive_error);
@@ -351,7 +352,13 @@ function updateConnection() {
   const node = $("connection");
   const age = Date.now() - lastUpdate;
   let status = initialRequestFailed ? "Receiver unavailable" : "Connecting";
-  if (snapshot) status = age > 10000 ? "Connection lost" : streamReady ? "Connected" : "Polling";
+  if (snapshot) {
+    if (age > 10000) status = "Connection lost";
+    else if (String(snapshot.receiver).startsWith("receiver error")) status = "Receiver error";
+    else if (snapshot.receiver === "starting") status = "Starting receiver";
+    else if (snapshot.receiver === "finished") status = snapshot.source === "live" ? "Receiver stopped" : "Replay finished";
+    else status = streamReady ? "Connected" : "Polling";
+  }
   setText(node, status);
   node.className = status === "Connected" || status === "Polling" ? "good" : "warn";
 }
