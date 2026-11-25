@@ -1,4 +1,4 @@
-# <img src="web/a16t-mark.svg" alt="" width="32" height="32" align="middle"> <samp>A16T</samp>
+# <img src="web/a16t-mark.svg" alt="" width="32" height="32" align="middle"> A16T
 
 A16T is a local, receive-only radio monitor for RTL-SDR. Choose an aviation AM or marine narrow-FM profile, listen to individual channels in the browser, and review a compact recording of each detected transmission. The receiver keeps running when the browser closes.
 
