@@ -52,7 +52,7 @@ pub struct Clip {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Transmission {
     pub id: i64,
     pub channel: String,
@@ -70,6 +70,7 @@ const TRANSMISSION_COLUMNS: &str = "c.id, c.channel, c.frequency_hz, c.start_ms,
     c.start_ms + (c.samples + 15) / 16 AS end_ms, c.status,
     CASE WHEN c.transcription_status = 'complete' THEN c.transcript END, c.transcription_status";
 const TRANSMISSION_FILTER: &str = "c.samples > 0 AND c.status NOT IN ('recording', 'incomplete')";
+const CHANNEL_HISTORY_WINDOW_RADIUS: usize = 12;
 
 impl Transmission {
     fn from_row(row: &Row<'_>) -> rusqlite::Result<Self> {
@@ -90,6 +91,13 @@ pub struct ChannelHistory {
     pub recording: Transmission,
     pub previous_id: Option<i64>,
     pub next_id: Option<i64>,
+    pub window: Option<ChannelHistoryWindow>,
+}
+
+pub struct ChannelHistoryWindow {
+    pub items: Vec<Transmission>,
+    pub older_id: Option<i64>,
+    pub newer_id: Option<i64>,
 }
 
 impl Archive {
@@ -456,6 +464,31 @@ impl Archive {
             .collect::<rusqlite::Result<_>>()?)
     }
 
+    /// The oldest archived mark on any configured channel and frequency of this source.
+    pub fn earliest_transmission<'a>(
+        &self,
+        source: &str,
+        channels: impl IntoIterator<Item = (&'a str, u64)>,
+    ) -> Result<Option<i64>> {
+        let db = self.db()?;
+        let mut stmt = db.prepare_cached(&format!(
+            "SELECT c.start_ms FROM clips c JOIN sessions s ON s.id = c.session_id
+             WHERE c.channel = ?1 AND c.frequency_hz = ?2 AND s.source = ?3
+               AND {TRANSMISSION_FILTER}
+             ORDER BY c.start_ms LIMIT 1"
+        ))?;
+        let mut earliest: Option<i64> = None;
+        for (channel, frequency_hz) in channels {
+            if let Some(start_ms) = stmt
+                .query_row((channel, frequency_hz, source), |row| row.get(0))
+                .optional()?
+            {
+                earliest = Some(earliest.map_or(start_ms, |time| time.min(start_ms)));
+            }
+        }
+        Ok(earliest)
+    }
+
     /// Read a selected or latest transmission, and its immediate chronological neighbors.
     pub fn channel_history(
         &self,
@@ -463,6 +496,28 @@ impl Archive {
         channel: &str,
         frequency_hz: u64,
         id: Option<i64>,
+    ) -> Result<Option<ChannelHistory>> {
+        self.read_channel_history(source, channel, frequency_hz, id, false)
+    }
+
+    /// Include a bounded window and continuation IDs around the selected transmission.
+    pub fn channel_history_window(
+        &self,
+        source: &str,
+        channel: &str,
+        frequency_hz: u64,
+        id: Option<i64>,
+    ) -> Result<Option<ChannelHistory>> {
+        self.read_channel_history(source, channel, frequency_hz, id, true)
+    }
+
+    fn read_channel_history(
+        &self,
+        source: &str,
+        channel: &str,
+        frequency_hz: u64,
+        id: Option<i64>,
+        include_window: bool,
     ) -> Result<Option<ChannelHistory>> {
         let db = self.db()?;
         let scope = format!(
@@ -490,29 +545,70 @@ impl Archive {
             return Ok(None);
         };
 
-        let neighbor = |comparison, order| {
-            db.query_row(
-                &format!(
-                    "SELECT c.id {scope} AND (c.start_ms, c.id) {comparison} (?4, ?5)
-                     ORDER BY c.start_ms {order}, c.id {order} LIMIT 1"
-                ),
-                (
-                    channel,
-                    frequency_hz,
-                    source,
-                    recording.start_ms,
-                    recording.id,
-                ),
-                |row| row.get(0),
+        let neighbor_sql = |columns, comparison, order| {
+            format!(
+                "SELECT {columns} {scope} AND (c.start_ms, c.id) {comparison} (?4, ?5)
+                 ORDER BY c.start_ms {order}, c.id {order} LIMIT ?6"
             )
-            .optional()
         };
-        let previous_id = neighbor("<", "DESC")?;
-        let next_id = neighbor(">", "ASC")?;
+        let neighbor_params = |limit| {
+            (
+                channel,
+                frequency_hz,
+                source,
+                recording.start_ms,
+                recording.id,
+                limit,
+            )
+        };
+        let (previous_id, next_id, window) = if include_window {
+            let page = |comparison, order| -> Result<Vec<Transmission>> {
+                let mut stmt =
+                    db.prepare(&neighbor_sql(TRANSMISSION_COLUMNS, comparison, order))?;
+                Ok(stmt
+                    .query_map(
+                        neighbor_params(CHANNEL_HISTORY_WINDOW_RADIUS + 1),
+                        Transmission::from_row,
+                    )?
+                    .collect::<rusqlite::Result<_>>()?)
+            };
+            let mut older = page("<", "DESC")?;
+            let mut newer = page(">", "ASC")?;
+            let previous_id = older.first().map(|item| item.id);
+            let next_id = newer.first().map(|item| item.id);
+            // Request one extra row on each side so clients can scroll past this page.
+            let older_id = older.get(CHANNEL_HISTORY_WINDOW_RADIUS).map(|item| item.id);
+            let newer_id = newer.get(CHANNEL_HISTORY_WINDOW_RADIUS).map(|item| item.id);
+            older.truncate(CHANNEL_HISTORY_WINDOW_RADIUS);
+            newer.truncate(CHANNEL_HISTORY_WINDOW_RADIUS);
+            older.reverse();
+            older.push(recording.clone());
+            older.extend(newer);
+            (
+                previous_id,
+                next_id,
+                Some(ChannelHistoryWindow {
+                    items: older,
+                    older_id,
+                    newer_id,
+                }),
+            )
+        } else {
+            let neighbor = |comparison, order| {
+                db.query_row(
+                    &neighbor_sql("c.id", comparison, order),
+                    neighbor_params(1),
+                    |row| row.get(0),
+                )
+                .optional()
+            };
+            (neighbor("<", "DESC")?, neighbor(">", "ASC")?, None)
+        };
         Ok(Some(ChannelHistory {
             recording,
             previous_id,
             next_id,
+            window,
         }))
     }
 

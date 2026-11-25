@@ -56,6 +56,19 @@ fn timeline_intersects_the_requested_window_across_sessions_of_one_source() -> R
     assert_eq!(found[1].status, "queued");
     assert_eq!((found[2].start_ms, found[2].end_ms), (1999, 2001));
     assert!(archive.transmissions("live", 1000, 1000)?.is_empty());
+    archive.save(replay, "two", 200, 200, &[0; 16])?;
+    archive.save(current, "two", 201, 300, &[0; 16])?;
+    let channels = [("two", 200), ("three", 300)];
+    assert_eq!(archive.earliest_transmission("live", channels)?, Some(1000));
+    assert_eq!(
+        archive.earliest_transmission("replay", channels)?,
+        Some(200)
+    );
+    assert_eq!(
+        archive.earliest_transmission("live", [("one", 100)])?,
+        Some(900)
+    );
+    assert_eq!(archive.earliest_transmission("live", [("one", 101)])?, None);
     Ok(())
 }
 
@@ -152,6 +165,58 @@ fn channel_history_crosses_hours_and_sessions_in_stable_capture_order() -> Resul
             .channel_history("live", "three", 100, None)?
             .is_none()
     );
+    Ok(())
+}
+
+#[test]
+fn channel_history_windows_cover_both_directions_without_gaps() -> Result<()> {
+    let root = TempDir::new()?;
+    let archive = store(&root, u64::MAX);
+    let live = archive.start_session("test", "live")?;
+    let replay = archive.start_session("test", "replay")?;
+    archive.db()?.execute(
+        "WITH RECURSIVE entries(n) AS (VALUES(0) UNION ALL SELECT n+1 FROM entries WHERE n < 49)
+         INSERT INTO clips(session_id, channel, frequency_hz, start_ms, samples, status,
+                           keep_wav, provider, model, transcription_status)
+         SELECT ?1, 'one', 100, n / 2, 16, 'expired', 0, 'none', '', 'disabled' FROM entries",
+        [live],
+    )?;
+    archive.save(replay, "one", 100, 12, &[0; 16])?;
+    archive.save(live, "one", 101, 12, &[0; 16])?;
+    let ids: Vec<_> = archive
+        .transmissions("live", 0, 30)?
+        .into_iter()
+        .filter(|recording| recording.frequency_hz == 100)
+        .map(|recording| recording.id)
+        .collect();
+    let page = archive
+        .channel_history_window("live", "one", 100, Some(ids[25]))?
+        .unwrap();
+    assert_eq!(page.recording.id, ids[25]);
+    assert_eq!(page.previous_id, Some(ids[24]));
+    assert_eq!(page.next_id, Some(ids[26]));
+    let window = page.window.unwrap();
+    let item_ids =
+        |window: &ChannelHistoryWindow| window.items.iter().map(|item| item.id).collect::<Vec<_>>();
+    assert_eq!(item_ids(&window), ids[13..38]);
+    assert_eq!(
+        (window.older_id, window.newer_id),
+        (Some(ids[12]), Some(ids[38]))
+    );
+    let older = archive
+        .channel_history_window("live", "one", 100, window.older_id)?
+        .unwrap()
+        .window
+        .unwrap();
+    let newer = archive
+        .channel_history_window("live", "one", 100, window.newer_id)?
+        .unwrap()
+        .window
+        .unwrap();
+    assert_eq!(item_ids(&older), ids[..25]);
+    assert_eq!(item_ids(&newer), ids[26..]);
+    assert_eq!(older.older_id, None);
+    assert_eq!(newer.newer_id, None);
     Ok(())
 }
 

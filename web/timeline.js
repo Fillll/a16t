@@ -3,9 +3,11 @@
 window.a16tTimeline = (() => {
   const view = document.getElementById("timeline-view");
   const hour = 60 * 60 * 1000;
-  const minutes = new Intl.DateTimeFormat("en-GB", {timeZone: "UTC", hour: "2-digit", minute: "2-digit", hourCycle: "h23"});
-  const seconds = new Intl.DateTimeFormat("en-GB", {timeZone: "UTC", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23"});
-  const date = new Intl.DateTimeFormat("en-GB", {timeZone: "UTC", day: "2-digit", month: "short", year: "numeric"});
+  const clock = {hour: "2-digit", minute: "2-digit", hourCycle: "h23"};
+  const minutes = stamp => window.a16tTime.format(stamp, clock);
+  const seconds = stamp => window.a16tTime.format(stamp, {...clock, second: "2-digit"});
+  const date = stamp => window.a16tTime.format(stamp, {day: "2-digit", month: "short", year: "numeric"});
+  const zone = () => window.a16tTime.label;
   const rows = new Map();
   const kinds = new Map([
     ["distress", "Distress"], ["urgency", "PAN-PAN"], ["safety", "Safety"],
@@ -16,10 +18,18 @@ window.a16tTimeline = (() => {
   let profileKey = null;
   let history = null;
   let syncedAt = 0;
+  let syncedEnd = null;
+  let pastEnd = null;
+  let fetchedEnd = null;
+  let drag = null;
+  let panFrame = 0;
   let request = null;
   let timer = null;
   let selection = null;
   let inspectorRequest = null;
+  let conversation = null;
+  let pageRequest = null;
+  let lastScroll = 0;
   let failed = false;
   let recordingCount = 0;
   let newestRecording = null;
@@ -28,13 +38,14 @@ window.a16tTimeline = (() => {
   let plottedRange;
 
   view.innerHTML = `
-    <div class="tl-heading"><div class="tl-heading-line"><h2>Last 60 minutes</h2><p class="tl-summary"></p></div>
+    <div class="tl-heading"><div class="tl-heading-line"><h2>Last 60 minutes</h2><p class="tl-summary"></p>
+      <button type="button" class="tl-now" hidden>Back to now</button></div>
       <div class="tl-legend" aria-label="Transmission types"></div></div>
     <div class="tl-workspace">
       <div class="tl-plot">
-        <div class="tl-scroll" tabindex="0" role="region" aria-label="Channel activity over the last hour">
-          <div class="tl-axis"><span class="tl-axis-label" aria-label="Channel">Ch.</span>
-            <div class="tl-scale" aria-label="Time in UTC"><span></span><span></span><span></span><span></span><span>Now</span></div></div>
+        <div class="tl-scroll" tabindex="0" role="region" aria-label="One hour of channel activity">
+          <div class="tl-axis" tabindex="0" role="group" aria-describedby="tl-pan-help"><span class="tl-axis-label" aria-label="Channel">Ch.</span>
+            <div class="tl-scale"><span></span><span></span><span></span><span></span><span>Now</span></div></div>
           <div class="tl-rows" role="list" aria-label="Channels in selected profile"></div>
         </div>
         <p class="tl-feedback" role="status"></p>
@@ -48,16 +59,23 @@ window.a16tTimeline = (() => {
             <button type="button" class="tl-prev" aria-disabled="true">← Previous</button>
             <button type="button" class="tl-next" aria-disabled="true">Next →</button>
           </nav>
+          <button type="button" class="tl-selected-time" hidden></button>
           <p class="tl-inspector-position" role="status"></p>
-          <div class="tl-inspector-recording" hidden>
+          <div class="tl-live-detail"><div class="tl-inspector-recording" hidden>
             <p class="tl-inspector-kind"></p><p class="tl-inspector-meta" aria-live="polite"></p>
             <audio controls preload="metadata" aria-label="Selected transmission" hidden></audio>
             <p class="tl-audio-note" role="status"></p>
             <section class="tl-transcript"><h3>Transcript</h3><p></p></section>
+          </div></div>
+          <div class="tl-conversations" role="region" aria-label="Channel transmissions" tabindex="0" hidden>
+            <button type="button" class="tl-page tl-older" hidden>Older transmissions</button>
+            <ol class="tl-conversation-list"></ol>
+            <button type="button" class="tl-page tl-newer" hidden>Newer transmissions</button>
           </div>
         </div>
       </aside>
     </div>
+    <span id="tl-pan-help" hidden>Drag the time ruler, or use Left and Right to move 15 minutes. Press Home to return to live.</span>
     <div id="tl-tip" role="tooltip" hidden>
       <strong class="tl-tip-kind"></strong><span class="tl-tip-source"></span>
       <p class="tl-tip-meta"></p><p class="tl-tip-time"></p><p class="tl-tip-preview"></p>
@@ -65,10 +83,21 @@ window.a16tTimeline = (() => {
   const get = selector => view.querySelector(selector);
   const list = get(".tl-rows");
   const ticks = [...view.querySelectorAll(".tl-scale span")];
+  const axis = get(".tl-axis");
+  const scale = get(".tl-scale");
+  const now = get(".tl-now");
   const inspector = get(".tl-inspector");
   const previous = get(".tl-prev");
   const nextClip = get(".tl-next");
+  const selectedTime = get(".tl-selected-time");
   const player = get("audio");
+  const detail = get(".tl-inspector-recording");
+  const liveDetail = get(".tl-live-detail");
+  const conversations = get(".tl-conversations");
+  const conversationList = get(".tl-conversation-list");
+  const older = get(".tl-older");
+  const newer = get(".tl-newer");
+  const channelRows = new Map();
   const tip = get("#tl-tip");
   const tipKind = get(".tl-tip-kind");
   const tipSource = get(".tl-tip-source");
@@ -90,11 +119,116 @@ window.a16tTimeline = (() => {
     if (node.textContent !== content) node.textContent = content;
   }
 
-  function bounds() {
-    const end = history ? history.end_ms + (performance.now() - syncedAt) : Date.now();
-    const width = history ? history.end_ms - history.start_ms : hour;
-    return {start: end - width, end, width};
+  function liveEnd() {
+    return syncedEnd === null ? Date.now() : syncedEnd + performance.now() - syncedAt;
   }
+
+  function bounds() {
+    const end = pastEnd ?? liveEnd();
+    return {start: end - hour, end, width: hour};
+  }
+
+  function panTo(end) {
+    const latest = liveEnd();
+    const earliest = Number.isFinite(history?.earliest_ms) ? history.earliest_ms + hour : latest;
+    const limit = Math.min(latest, earliest);
+    const next = end === null || end >= latest ? null : Math.round(Math.max(limit, end));
+    pastEnd = next !== null && next < latest - 1 ? next : null;
+    renderHistory();
+  }
+
+  function stopPan() {
+    cancelAnimationFrame(panFrame);
+    panFrame = 0;
+    axis.removeAttribute("data-dragging");
+  }
+
+  function finishPan() {
+    stopPan();
+    renderHistory();
+    renderInspector();
+    refresh();
+  }
+
+  function startInertia(speed) {
+    const started = performance.now();
+    let previous = started;
+    let end = bounds().end;
+    function frame(now) {
+      const elapsed = now - started;
+      end += speed * Math.exp(-elapsed / 135) * Math.min(32, now - previous);
+      previous = now;
+      panTo(end);
+      if (elapsed >= 490 || pastEnd === null || Math.abs(end - pastEnd) > 2) finishPan();
+      else panFrame = requestAnimationFrame(frame);
+    }
+    panFrame = requestAnimationFrame(frame);
+  }
+
+  axis.addEventListener("pointerdown", event => {
+    if (!history || !event.isPrimary || event.button !== 0 || !scale.clientWidth) return;
+    stopPan();
+    axis.setPointerCapture(event.pointerId);
+    drag = {
+      id: event.pointerId, x: event.clientX, end: bounds().end, factor: hour / scale.clientWidth,
+      lastX: event.clientX, stamp: event.timeStamp, speed: 0, moved: false
+    };
+  });
+  window.addEventListener("pointermove", event => {
+    if (drag?.id !== event.pointerId) return;
+    if (event.buttons === 0 && event.pointerType === "mouse") { releaseRuler(event); return; }
+    const delta = event.clientX - drag.x;
+    if (!drag.moved && Math.abs(delta) < 4) return;
+    if (!drag.moved) {
+      drag.moved = true;
+      axis.dataset.dragging = "true";
+      hideTip();
+      request?.abort(); request = null;
+    }
+    const dt = event.timeStamp - drag.stamp;
+    if (dt > 0) {
+      const instant = (event.clientX - drag.lastX) / dt;
+      drag.speed = 0.45 * drag.speed + 0.55 * Math.max(-2, Math.min(2, instant));
+      drag.stamp = event.timeStamp;
+      drag.lastX = event.clientX;
+    }
+    panTo(drag.end - delta * drag.factor);
+  }, true);
+  function releaseRuler(event) {
+    if (drag?.id !== event.pointerId) return;
+    const released = drag;
+    drag = null;
+    axis.removeAttribute("data-dragging");
+    const coast = event.type === "pointerup" && event.timeStamp - released.stamp < 90 &&
+      Math.abs(released.speed) > 0.055 && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (released.moved && coast) startInertia(-released.speed * released.factor);
+    else finishPan();
+  }
+  for (const event of ["pointerup", "pointercancel"]) window.addEventListener(event, releaseRuler, true);
+  window.addEventListener("blur", () => {
+    if (!drag) return;
+    drag = null;
+    finishPan();
+  });
+
+  function changeHour(end) {
+    if (!history) return;
+    stopPan();
+    request?.abort(); request = null;
+    panTo(end);
+    finishPan();
+  }
+  now.addEventListener("click", () => {
+    changeHour(null);
+    axis.focus({preventScroll: true});
+  });
+  axis.addEventListener("keydown", event => {
+    const key = event.key;
+    if (!["ArrowLeft", "ArrowRight", "Home"].includes(key)) return;
+    event.preventDefault();
+    const step = hour / 4;
+    changeHour(key === "Home" ? null : bounds().end + (key === "ArrowLeft" ? -step : step));
+  });
 
   function position(mark, from, to, range) {
     const start = Math.max(from, range.start);
@@ -109,11 +243,11 @@ window.a16tTimeline = (() => {
   }
 
   function precise(ms) {
-    return seconds.format(ms) + "." + String(Math.floor(ms) % 1000).padStart(3, "0");
+    return seconds(ms) + "." + String(Math.floor(ms) % 1000).padStart(3, "0");
   }
 
   function timeLabel(clip) {
-    return precise(clip.start_ms) + " – " + precise(clip.end_ms) + " UTC";
+    return precise(clip.start_ms) + " – " + precise(clip.end_ms) + " " + zone();
   }
 
   function kindOf(value) { return kinds.has(value) ? value : "unknown"; }
@@ -165,7 +299,7 @@ window.a16tTimeline = (() => {
     write(tipSource, evidence(clip));
     write(tipMeta, channelName(row.channel) + " · " + frequency(row.channel) + " MHz");
     const span = ((clip.end_ms - clip.start_ms) / 1000).toFixed(1) + " s";
-    write(tipTime, seconds.format(clip.start_ms) + " UTC · " + span + (live ? " · Receiving" : ""));
+    write(tipTime, seconds(clip.start_ms) + " " + zone() + " · " + span + (live ? " · Receiving" : ""));
     write(tipPreview, clip.preview ? "Transcript · " + clip.preview : "");
     tip.hidden = false;
     const anchor = mark.getBoundingClientRect();
@@ -257,7 +391,7 @@ window.a16tTimeline = (() => {
     const duration = (clip.end_ms - clip.start_ms) / 1000;
     const meta = get(".tl-inspector-meta");
     meta.setAttribute("aria-live", live ? "off" : "polite");
-    write(meta, `${date.format(clip.start_ms)}\n${timeLabel(clip)}\n${duration.toFixed(2)} s`);
+    write(meta, `${date(clip.start_ms)}\n${timeLabel(clip)}\n${duration.toFixed(2)} s`);
     const available = !live && ["queued", "ready", "failed"].includes(clip.status);
     player.hidden = !available;
     const path = "/api/clips/" + encodeURIComponent(clip.id) + "/audio";
@@ -297,7 +431,7 @@ window.a16tTimeline = (() => {
     empty.hidden = Boolean(row);
     station.hidden = !row;
     write(get("#tl-detail-channel"), row ? channelName(row.channel) : "Transmission");
-    if (!row) { clearPlayer(); return; }
+    if (!row) { clearPlayer(); renderConversations(); return; }
     write(station, frequency(row.channel) + " MHz");
     const {data, liveSince, error, id} = selection;
     const live = liveSince !== null;
@@ -306,6 +440,9 @@ window.a16tTimeline = (() => {
     const clip = live
       ? (receiving ? {start_ms: liveSince, end_ms: channel.active_until_ms} : null)
       : (data?.clip || row.clips.get(id));
+    const selectedMark = clip ?? conversation?.items.find(item => item.id === id);
+    selectedTime.hidden = live || !selectedMark;
+    if (selectedMark) write(selectedTime, "Selected · " + seconds(selectedMark.start_ms) + " " + zone());
     previous.setAttribute("aria-disabled", String(previousId() == null));
     nextClip.setAttribute("aria-disabled", String(live || data?.next_id == null));
     let message = "";
@@ -313,11 +450,144 @@ window.a16tTimeline = (() => {
     else if (live && !receiving) message = "Waiting for the recording…";
     else if (!data && !clip) message = "Loading channel history…";
     else if (!clip) message = "No recordings for this channel yet.";
-    else if (!live && clip.end_ms <= bounds().start) message = "Outside the last 60 minutes";
+    else if (!live && (clip.end_ms <= bounds().start || clip.start_ms >= bounds().end)) message = "Outside the displayed hour";
     write(get(".tl-inspector-position"), message);
-    get(".tl-inspector-recording").hidden = !clip;
+    detail.hidden = !clip;
+    renderConversations();
     if (clip) showClip(row, clip, live);
     else clearPlayer();
+  }
+
+  function byTime(a, b) {
+    return a.start_ms - b.start_ms || a.id - b.id;
+  }
+
+  function renderConversations() {
+    const items = conversation?.items ?? [];
+    const selectedId = selection?.liveSince === null ? selection.id : null;
+    const ids = new Set(items.map(item => item.id));
+    const target = channelRows.get(selectedId);
+    if ((!ids.has(selectedId) || !target) && detail.parentNode !== liveDetail) liveDetail.append(detail);
+    for (const [id, node] of channelRows) {
+      if (!ids.has(id)) { node.remove(); channelRows.delete(id); }
+    }
+    let next = conversationList.firstElementChild;
+    for (const item of items) {
+      let node = channelRows.get(item.id);
+      if (!node) {
+        node = document.createElement("li");
+        node.className = "tl-conversation";
+        node.innerHTML = '<button type="button" class="tl-conversation-select"><time class="tl-conversation-time"></time><span class="tl-conversation-selection" hidden>Selected</span><span class="tl-conversation-preview"></span></button>';
+        node.firstElementChild.addEventListener("click", () => moveTo(item.id));
+        channelRows.set(item.id, node);
+      }
+      const marked = item.id === selectedId;
+      node.dataset.selected = String(marked);
+      const button = node.firstElementChild;
+      if (marked) button.setAttribute("aria-current", "true");
+      else button.removeAttribute("aria-current");
+      const time = button.querySelector("time");
+      time.dateTime = new Date(item.start_ms).toISOString();
+      write(time, date(item.start_ms) + " · " + seconds(item.start_ms) + " " + zone());
+      button.querySelector(".tl-conversation-selection").hidden = !marked;
+      write(button.querySelector(".tl-conversation-preview"), marked ? "" : (item.preview || ""));
+      if (node !== next) conversationList.insertBefore(node, next);
+      next = node.nextElementSibling;
+      if (marked && detail.parentNode !== node) node.append(detail);
+    }
+    conversations.hidden = items.length === 0;
+    for (const [button, id] of [[older, conversation?.older_id], [newer, conversation?.newer_id]]) {
+      button.hidden = id == null;
+      button.disabled = Boolean(pageRequest);
+    }
+  }
+
+  function mergeConversation(window) {
+    if (!window?.items.length) return;
+    const first = window.items[0];
+    const last = window.items.at(-1);
+    const current = conversation?.items;
+    if (!current || byTime(first, current.at(-1)) > 0 || byTime(last, current[0]) < 0) {
+      conversation = window;
+      return;
+    }
+    const clips = new Map(current.map(item => [item.id, item]));
+    for (const item of window.items) clips.set(item.id, item);
+    conversation = {
+      items: [...clips.values()].sort(byTime),
+      older_id: byTime(first, current[0]) <= 0 ? window.older_id : conversation.older_id,
+      newer_id: byTime(last, current.at(-1)) >= 0 ? window.newer_id : conversation.newer_id
+    };
+  }
+
+  function revealTransmission() {
+    const row = channelRows.get(selection?.id);
+    if (!row) return;
+    const area = conversations.getBoundingClientRect();
+    const card = row.getBoundingClientRect();
+    if (card.top < area.top || card.bottom > area.bottom) {
+      conversations.scrollTop += card.top - area.top - (area.height - Math.min(area.height, card.height)) / 2;
+      lastScroll = conversations.scrollTop;
+    }
+  }
+
+  async function fetchHistory(channel, id, signal) {
+    const path = "/api/channels/" + encodeURIComponent(channel) + "/history";
+    const query = new URLSearchParams({window: "true"});
+    if (id !== null) query.set("id", id);
+    const response = await fetch(path + "?" + query, {signal, cache: "no-store"});
+    if (!response.ok) throw Error("Channel history unavailable");
+    return response.json();
+  }
+
+  async function pageHistory(direction) {
+    const id = conversation?.[direction + "_id"];
+    if (!selection || id == null || pageRequest) return;
+    const channel = selection.channel;
+    const controller = new AbortController();
+    const button = direction === "older" ? older : newer;
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    pageRequest = controller;
+    button.textContent = "Loading transmissions…";
+    renderConversations();
+    try {
+      const data = await fetchHistory(channel, id, controller.signal);
+      if (pageRequest !== controller) return;
+      const anchor = conversationList.firstElementChild;
+      const top = anchor?.getBoundingClientRect().top;
+      mergeConversation(data.window);
+      renderConversations();
+      if (direction === "older" && anchor?.isConnected) {
+        conversations.scrollTop += anchor.getBoundingClientRect().top - top;
+        lastScroll = conversations.scrollTop;
+      }
+      button.textContent = direction === "older" ? "Older transmissions" : "Newer transmissions";
+    } catch {
+      if (pageRequest === controller) button.textContent = "Retry loading transmissions";
+    } finally {
+      clearTimeout(timeout);
+      if (pageRequest === controller) { pageRequest = null; renderConversations(); }
+    }
+  }
+
+  older.addEventListener("click", () => pageHistory("older"));
+  newer.addEventListener("click", () => pageHistory("newer"));
+  selectedTime.addEventListener("click", revealTransmission);
+  conversations.addEventListener("scroll", () => {
+    const top = conversations.scrollTop;
+    const delta = top - lastScroll;
+    lastScroll = top;
+    if (delta < 0 && top < 45) pageHistory("older");
+    if (delta > 0 && conversations.scrollHeight - conversations.clientHeight - top < 45) pageHistory("newer");
+  }, {passive: true});
+
+  function resetConversation() {
+    pageRequest?.abort(); pageRequest = null;
+    conversation = null;
+    conversations.scrollTop = 0;
+    lastScroll = 0;
+    older.textContent = "Older transmissions";
+    newer.textContent = "Newer transmissions";
   }
 
   function previousId() {
@@ -332,10 +602,11 @@ window.a16tTimeline = (() => {
     const old = selection;
     inspectorRequest?.abort();
     inspectorRequest = null;
-    selection = {channel: row.channel.id, id, liveSince, data: null, error: false};
-    inspector.scrollTop = 0;
+    if (old?.channel !== row.channel.id || id === null) resetConversation();
+    selection = {channel: row.channel.id, id, liveSince, data: null, error: false, reveal: true};
     selectMarks(old);
     renderInspector();
+    revealTransmission();
     refreshInspector();
   }
 
@@ -350,16 +621,13 @@ window.a16tTimeline = (() => {
     const controller = new AbortController();
     inspectorRequest = controller;
     const timeout = setTimeout(() => controller.abort(), 6000);
-    const path = "/api/channels/" + encodeURIComponent(selected.channel) + "/history";
-    const query = selected.id === null ? "" : "?id=" + encodeURIComponent(selected.id);
     try {
-      const response = await fetch(path + query, {signal: controller.signal, cache: "no-store"});
-      if (!response.ok) throw Error("Channel history unavailable");
-      const data = await response.json();
+      const data = await fetchHistory(selected.channel, selected.id, controller.signal);
       if (inspectorRequest !== controller) return;
       const old = {...selected};
       selected.data = data;
       selected.error = false;
+      mergeConversation(data.window);
       if (selected.liveSince === null) selected.id = data.clip?.id ?? null;
       else if (data.clip?.start_ms === selected.liveSince) {
         selected.id = data.clip.id;
@@ -370,7 +638,14 @@ window.a16tTimeline = (() => {
       if (inspectorRequest === controller) selected.error = true;
     } finally {
       clearTimeout(timeout);
-      if (inspectorRequest === controller) { inspectorRequest = null; renderInspector(); }
+      if (inspectorRequest === controller) {
+        inspectorRequest = null;
+        renderInspector();
+        if (selected.reveal) {
+          revealTransmission();
+          selected.reveal = false;
+        }
+      }
     }
   }
 
@@ -429,7 +704,7 @@ window.a16tTimeline = (() => {
     let receiving = 0;
     for (const row of rows.values()) {
       const ch = row.channel;
-      if (Number.isFinite(ch.active_since_ms) && Number.isFinite(ch.active_until_ms) && range.end - ch.last_sample_ms < 5000) {
+      if (pastEnd === null && Number.isFinite(ch.active_since_ms) && Number.isFinite(ch.active_until_ms) && range.end - ch.last_sample_ms < 5000) {
         position(row.live, ch.active_since_ms, ch.active_until_ms, range);
       } else {
         row.live.hidden = true;
@@ -438,7 +713,7 @@ window.a16tTimeline = (() => {
         receiving++;
         row.live.dataset.kind = kindOf(ch.default_kind);
         row.live.setAttribute("aria-label", channelName(ch) + " · " + kinds.get(row.live.dataset.kind) +
-          " · Receiving since " + seconds.format(ch.active_since_ms) + " UTC");
+          " · Receiving since " + seconds(ch.active_since_ms) + " " + zone());
         row.live.setAttribute("aria-pressed", String(selection?.channel === ch.id &&
           selection.liveSince === ch.active_since_ms));
       }
@@ -452,8 +727,13 @@ window.a16tTimeline = (() => {
     plottedRange = range;
     for (let i = 0; i < ticks.length - 1; i++) {
       const stamp = range.start + range.width * i / (ticks.length - 1);
-      write(ticks[i], minutes.format(stamp));
+      write(ticks[i], minutes(stamp));
     }
+    const past = pastEnd !== null;
+    write(ticks.at(-1), past ? minutes(range.end) : "Now");
+    write(get(".tl-heading h2"), past ? date(range.start) : "Last 60 minutes");
+    now.hidden = !past;
+    axis.setAttribute("aria-label", "Time ruler · " + zone());
     const byChannel = new Map();
     for (const clip of history?.transmissions || []) {
       const row = rows.get(clip.channel);
@@ -491,7 +771,7 @@ window.a16tTimeline = (() => {
     }
     const counts = [`${rows.size} channel${rows.size === 1 ? "" : "s"}`];
     if (history) counts.push(`${recordingCount} recording${recordingCount === 1 ? "" : "s"}`);
-    counts.push("UTC");
+    counts.push(zone());
     write(get(".tl-summary"), counts.join(" · "));
     if (selection?.liveSince != null) {
       const row = rows.get(selection.channel);
@@ -507,24 +787,32 @@ window.a16tTimeline = (() => {
     else if (!state) message = "Waiting for the channel profile…";
     else if (!history) message = "Loading recording history…";
     else if (!rows.size) message = "No channels configured.";
-    else if (!recordingCount && !receiving) message = "No recorded transmissions in the last hour.";
+    else if (pastEnd !== null && fetchedEnd !== pastEnd) message = drag || panFrame ? "" : "Loading this hour…";
+    else if (!recordingCount && !receiving) message = pastEnd === null
+      ? "No recorded transmissions in the last hour." : "No recorded transmissions in this hour.";
     write(get(".tl-feedback"), message);
   }
 
   async function refresh() {
-    if (!visible || request || !state) return;
+    if (!visible || request || !state || drag || panFrame || (pastEnd !== null && pastEnd === fetchedEnd)) return;
+    const end = pastEnd;
     const controller = new AbortController();
     request = controller;
     const timeout = setTimeout(() => controller.abort(), 6000);
     try {
-      const response = await fetch("/api/timeline", {signal: controller.signal, cache: "no-store"});
+      const query = end === null ? "" : "?end_ms=" + end;
+      const response = await fetch("/api/timeline" + query, {signal: controller.signal, cache: "no-store"});
       if (!response.ok) throw Error("Timeline unavailable");
       const payload = await response.json();
       if (request !== controller) return;
       if (payload.profile !== state.profile || payload.source !== state.source ||
           !Array.isArray(payload.transmissions) || !(payload.end_ms > payload.start_ms)) throw Error("Invalid timeline");
       history = payload;
-      syncedAt = performance.now();
+      fetchedEnd = end;
+      if (end === null) {
+        syncedAt = performance.now();
+        syncedEnd = payload.end_ms;
+      }
       failed = false;
     } catch {
       if (request === controller) failed = true;
@@ -550,9 +838,14 @@ window.a16tTimeline = (() => {
       profileKey = key;
       request?.abort(); request = null;
       history = null;
+      fetchedEnd = null;
+      pastEnd = null;
+      drag = null;
+      stopPan();
       failed = false;
       hideTip();
       inspectorRequest?.abort(); inspectorRequest = null;
+      resetConversation();
       const old = selection;
       selection = null;
       selectMarks(old);
@@ -581,12 +874,18 @@ window.a16tTimeline = (() => {
   }
 
   document.addEventListener("visibilitychange", refreshVisible);
+  window.addEventListener("a16t-timezone-change", () => {
+    if (visible) { renderHistory(); renderInspector(); }
+  });
 
   function hide() {
     visible = false;
     hideTip();
     request?.abort(); request = null;
     inspectorRequest?.abort(); inspectorRequest = null;
+    pageRequest?.abort(); pageRequest = null;
+    drag = null;
+    stopPan();
     clearInterval(timer);
     clearPlayer();
   }

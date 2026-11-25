@@ -116,6 +116,7 @@ class ReplayTest(unittest.TestCase):
                 self.assertEqual(timeline["end_ms"] - timeline["start_ms"], 3_600_000)
                 self.assertEqual((timeline["profile"], timeline["source"]), (first["profile"], "replay"))
                 self.assertEqual(len(timeline["transmissions"]), 1)
+                self.assertEqual(timeline["earliest_ms"], clip["start_ms"])
                 event = timeline["transmissions"][0]
                 self.assertEqual(channel["default_kind"], "port")
                 self.assertEqual((event["kind"], event["kind_source"], event["preview"]),
@@ -183,11 +184,38 @@ class ReplayTest(unittest.TestCase):
                 self.assertEqual(detail["clip"]["transcript"], text)
                 self.assertEqual(detail["clip"]["kind"], "urgency")
                 self.assertEqual(detail["clip"]["transcription_status"], "complete")
+                self.assertNotIn("window", detail)
                 with HTTP.open(base + history_path + f"?id={older_id}", timeout=4) as response:
                     older = json.load(response)
                 self.assertEqual((older["previous_id"], older["next_id"]), (None, clip["id"]))
                 self.assertEqual(older["clip"]["status"], "expired")
                 self.assertEqual(older["clip"]["start_ms"], clip["start_ms"] - 7200000)
+                with HTTP.open(base + history_path + "?window=true", timeout=4) as response:
+                    latest_window = json.load(response)
+                window = latest_window.pop("window")
+                self.assertEqual(latest_window, detail)
+                self.assertEqual((window["older_id"], window["newer_id"]), (None, None))
+                self.assertEqual([item["id"] for item in window["items"]], [older_id, clip["id"]])
+                self.assertEqual(window["items"][1], updated)
+                with HTTP.open(base + history_path + f"?id={older_id}&window=true", timeout=4) as response:
+                    anchored_window = json.load(response)
+                self.assertEqual(anchored_window.pop("window"), window)
+                self.assertEqual(anchored_window, older)
+
+                old_start_ms = older["clip"]["start_ms"]
+                historical_end_ms = old_start_ms + 600_000
+                with HTTP.open(base + f"/api/timeline?end_ms={historical_end_ms}", timeout=4) as response:
+                    historical = json.load(response)
+                self.assertEqual((historical["start_ms"], historical["end_ms"]),
+                                 (historical_end_ms - 3_600_000, historical_end_ms))
+                self.assertEqual(historical["earliest_ms"], old_start_ms)
+                self.assertEqual(historical["transmissions"], [window["items"][0]])
+
+                future_end_ms = int(time.time() * 1000) + 60_000
+                with HTTP.open(base + f"/api/timeline?end_ms={future_end_ms}", timeout=4) as response:
+                    clamped = json.load(response)
+                self.assertLess(clamped["end_ms"], future_end_ms)
+                self.assertEqual(clamped["transmissions"], [updated])
 
                 empty_channel = next(ch["id"] for ch in state["channels"]
                                      if ch["id"] != channel["id"] and ch["id"] != "marine-16")
@@ -195,13 +223,20 @@ class ReplayTest(unittest.TestCase):
                 with HTTP.open(base + empty_path, timeout=4) as response:
                     self.assertEqual(json.load(response),
                                      {"clip": None, "previous_id": None, "next_id": None})
+                with HTTP.open(base + empty_path + "?window=true", timeout=4) as response:
+                    self.assertEqual(json.load(response), {
+                        "clip": None, "previous_id": None, "next_id": None,
+                        "window": {"items": [], "older_id": None, "newer_id": None},
+                    })
                 with self.assertRaises(HTTPError) as wrong_channel:
                     HTTP.open(base + empty_path + f"?id={clip['id']}", timeout=4)
                 self.assertEqual(wrong_channel.exception.code, 404)
 
             with run_receiver(archive, "noaa-weather") as base:
                 with HTTP.open(base + "/api/timeline", timeout=4) as response:
-                    self.assertEqual(json.load(response)["transmissions"], [])
+                    weather = json.load(response)
+                self.assertEqual(weather["transmissions"], [])
+                self.assertIsNone(weather["earliest_ms"])
 
 
 if __name__ == "__main__":

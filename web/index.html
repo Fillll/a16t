@@ -19,8 +19,42 @@
       <a href="#watchboard" id="watchboard-link" aria-current="page">Watchboard</a>
       <a href="#timeline" id="timeline-link">Timeline</a>
     </nav>
-    <dl class="mast-profile"><dt>Profile</dt><dd id="profile">—</dd></dl>
-    <div class="mast-details"><span id="connection" role="status">Connecting</span><time id="clock">UTC</time></div>
+    <div class="mast-profile mast-popover">
+      <button class="mast-trigger mast-profile-trigger" type="button" aria-expanded="false" aria-controls="profile-panel">
+        <span class="mast-profile-label">Profile</span><span id="profile">—</span>
+      </button>
+      <section class="mast-panel" id="profile-panel" aria-label="Receiver profiles" tabindex="-1" hidden>
+        <p class="mast-panel-note" id="profile-note" role="status"></p>
+        <div class="mast-options" id="profile-options"></div>
+      </section>
+    </div>
+    <div class="mast-details">
+      <div class="mast-popover mast-connection">
+        <button class="mast-trigger" type="button" aria-expanded="false" aria-controls="connection-panel">
+          <span id="connection" role="status">Connecting</span>
+        </button>
+        <section class="mast-panel" id="connection-panel" aria-labelledby="connection-heading" tabindex="-1" hidden>
+          <h2 id="connection-heading">Connection details</h2>
+          <dl class="connection-metrics">
+            <div><dt>Host</dt><dd id="connection-host">—</dd></div>
+            <div><dt>Server IP</dt><dd id="connection-address">—</dd></div>
+            <div><dt>Device</dt><dd id="connection-device">—</dd></div>
+            <div><dt>Server bind</dt><dd id="connection-bind">—</dd></div>
+            <div><dt>Browser endpoint</dt><dd id="connection-endpoint">—</dd></div>
+            <div><dt>Updates</dt><dd id="connection-transport">—</dd></div>
+            <div><dt>Receiver</dt><dd id="connection-receiver">—</dd></div>
+          </dl>
+        </section>
+      </div>
+      <div class="mast-popover mast-clock">
+        <button class="mast-trigger" type="button" aria-expanded="false" aria-controls="clock-panel" aria-label="Choose time zone">
+          <time id="clock">UTC</time>
+        </button>
+        <section class="mast-panel" id="clock-panel" aria-label="Time zone" tabindex="-1" hidden>
+          <div class="mast-options" id="clock-options"></div>
+        </section>
+      </div>
+    </div>
   </header>
   <main>
     <section class="overview" aria-labelledby="title">

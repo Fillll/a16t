@@ -47,6 +47,20 @@ struct TimelineMark {
     preview: Option<String>,
 }
 
+impl TimelineMark {
+    fn new(recording: Transmission, default_kind: &str) -> Self {
+        let transcript = recording.transcript.as_deref();
+        let (kind, kind_source) = classify(transcript, default_kind);
+        let preview = transcript.and_then(transcript_preview);
+        Self {
+            recording,
+            kind,
+            kind_source,
+            preview,
+        }
+    }
+}
+
 fn transcript_preview(text: &str) -> Option<String> {
     let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
     let mut chars = normalized.chars();
@@ -57,9 +71,16 @@ fn transcript_preview(text: &str) -> Option<String> {
     (!preview.is_empty()).then_some(preview)
 }
 
-async fn timeline(State(app): State<App>) -> Response {
-    let end_ms = now_ms();
-    let start_ms = end_ms - 3_600_000;
+#[derive(Deserialize)]
+struct TimelineBounds {
+    end_ms: Option<i64>,
+}
+
+async fn timeline(State(app): State<App>, Query(bounds): Query<TimelineBounds>) -> Response {
+    const HOUR_MS: i64 = 3_600_000;
+    let now = now_ms();
+    let end_ms = bounds.end_ms.unwrap_or(now).clamp(i64::MIN + HOUR_MS, now);
+    let start_ms = end_ms - HOUR_MS;
     let archive = app.archive.clone();
     let source = app.source.clone();
     let channels: HashMap<_, _> = app
@@ -70,29 +91,28 @@ async fn timeline(State(app): State<App>) -> Response {
         .iter()
         .map(|ch| (ch.id.clone(), (ch.frequency_hz, ch.default_kind)))
         .collect();
-    let result = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<_>> {
-        let recordings = archive.transmissions(&source, start_ms, end_ms)?;
-        Ok(recordings
+    let result = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+        let earliest_ms = archive.earliest_transmission(
+            &source,
+            channels
+                .iter()
+                .map(|(channel, &(frequency_hz, _))| (channel.as_str(), frequency_hz)),
+        )?;
+        let transmissions: Vec<_> = archive
+            .transmissions(&source, start_ms, end_ms)?
             .into_iter()
             .filter_map(|recording| {
                 let &(frequency, default_kind) = channels.get(&recording.channel)?;
                 if frequency != recording.frequency_hz {
                     return None;
                 }
-                let transcript = recording.transcript.as_deref();
-                let (kind, kind_source) = classify(transcript, default_kind);
-                let preview = transcript.and_then(transcript_preview);
-                Some(TimelineMark {
-                    recording,
-                    kind,
-                    kind_source,
-                    preview,
-                })
+                Some(TimelineMark::new(recording, default_kind))
             })
-            .collect())
+            .collect();
+        Ok((earliest_ms, transmissions))
     })
     .await;
-    let transmissions = match result {
+    let (earliest_ms, transmissions) = match result {
         Ok(Ok(rows)) => rows,
         Ok(Err(error)) => {
             eprintln!("Timeline read failed: {error}");
@@ -106,7 +126,7 @@ async fn timeline(State(app): State<App>) -> Response {
     (
         [(header::CACHE_CONTROL, "no-store")],
         Json(
-            json!({"profile":app.profile,"source":app.source,"start_ms":start_ms,"end_ms":end_ms,
+            json!({"profile":app.profile,"source":app.source,"start_ms":start_ms,"end_ms":end_ms,"earliest_ms":earliest_ms,
             "transmissions":transmissions}),
         ),
     )
@@ -116,6 +136,8 @@ async fn timeline(State(app): State<App>) -> Response {
 #[derive(Deserialize)]
 struct HistoryAnchor {
     id: Option<i64>,
+    #[serde(default)]
+    window: bool,
 }
 
 #[derive(Serialize)]
@@ -133,6 +155,15 @@ struct HistoryResponse<'a> {
     clip: Option<ChannelClip<'a>>,
     previous_id: Option<i64>,
     next_id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    window: Option<HistoryWindow>,
+}
+
+#[derive(Default, Serialize)]
+struct HistoryWindow {
+    items: Vec<TimelineMark>,
+    older_id: Option<i64>,
+    newer_id: Option<i64>,
 }
 
 async fn channel_history(
@@ -154,8 +185,12 @@ async fn channel_history(
 
     let archive = app.archive.clone();
     let id = anchor.id;
-    let history = match tokio::task::spawn_blocking(move || {
-        archive.channel_history(&app.source, &channel, frequency_hz, id)
+    let mut history = match tokio::task::spawn_blocking(move || {
+        if anchor.window {
+            archive.channel_history_window(&app.source, &channel, frequency_hz, id)
+        } else {
+            archive.channel_history(&app.source, &channel, frequency_hz, id)
+        }
     })
     .await
     {
@@ -169,7 +204,7 @@ async fn channel_history(
             return StatusCode::SERVICE_UNAVAILABLE.into_response();
         }
     };
-    let response = match &history {
+    let response = match &mut history {
         Some(history) => {
             let recording = &history.recording;
             let transcript = recording.transcript.as_deref();
@@ -184,10 +219,22 @@ async fn channel_history(
                 }),
                 previous_id: history.previous_id,
                 next_id: history.next_id,
+                window: history.window.take().map(|window| HistoryWindow {
+                    items: window
+                        .items
+                        .into_iter()
+                        .map(|recording| TimelineMark::new(recording, default_kind))
+                        .collect(),
+                    older_id: window.older_id,
+                    newer_id: window.newer_id,
+                }),
             }
         }
         None if id.is_some() => return StatusCode::NOT_FOUND.into_response(),
-        None => HistoryResponse::default(),
+        None => HistoryResponse {
+            window: anchor.window.then(HistoryWindow::default),
+            ..HistoryResponse::default()
+        },
     };
     ([(header::CACHE_CONTROL, "no-store")], Json(response)).into_response()
 }

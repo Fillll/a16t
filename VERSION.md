@@ -2,9 +2,9 @@
 
 ## Unreleased
 
-The Watchboard and Timeline share a compact header that displays the active profile.
+The compact shared header opens the installed profile picker, connection details, and a choice of UTC, local or Pacific time.
 
-The Timeline shows the selected transmission in a side panel with audio, the full transcript and Previous and Next navigation through the channel's archive.
+Drag the Timeline ruler to browse earlier hours, then choose Back to now to return live. The transmission panel scrolls through the selected channel's archive with the selected clip highlighted and its audio and full transcript inline.
 
 The Marine VHF Watchboard and Timeline show Channel 16 between 15 and 17, with a red label.
 

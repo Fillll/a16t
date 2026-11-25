@@ -1,3 +1,4 @@
+mod control;
 mod monitor;
 mod web;
 
@@ -43,6 +44,9 @@ struct Args {
     /// Profile JSON file.
     #[arg(long, default_value = "profiles/eastbay-marine.json")]
     profile: PathBuf,
+    /// Enable the profile picker by writing the requested ID to this supervisor state file.
+    #[arg(long)]
+    profile_selection: Option<PathBuf>,
     #[arg(long)]
     iq_file: Option<PathBuf>,
     /// GNU Radio interpreter for live and IQ. Replay supports plain Python 3.
@@ -218,9 +222,14 @@ async fn main() -> Result<()> {
     let mut stopping = false;
     let mut reader_error = None;
     if let Some(listener) = listener {
-        eprintln!("Watchboard http://{}", listener.local_addr()?);
-        let server_app = app.clone();
-        let server = axum::serve(listener, web::router(server_app)).into_future();
+        let bind = listener.local_addr()?;
+        eprintln!("Watchboard http://{bind}");
+        let router = web::router(app.clone()).merge(control::router(
+            &args.profile,
+            args.profile_selection,
+            bind,
+        ));
+        let server = axum::serve(listener, router).into_future();
         tokio::pin!(server);
         tokio::select! {
             result = &mut server => { reader_error = result.err().map(anyhow::Error::from); }

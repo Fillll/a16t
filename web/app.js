@@ -1,12 +1,33 @@
 "use strict";
 
 const $ = id => document.getElementById(id);
-const utcClock = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "UTC", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23"
-});
-const utcDate = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "UTC", day: "2-digit", month: "short", year: "numeric"
-});
+const timezonePreference = "a16t-timezone";
+const timezones = [
+  {id: "utc", label: "UTC", description: "Coordinated Universal Time", zone: "UTC"},
+  {id: "local", label: "Local", description: Intl.DateTimeFormat().resolvedOptions().timeZone},
+  {id: "pacific", label: "Pacific", description: "America/Los_Angeles", zone: "America/Los_Angeles"}
+];
+let timezone = timezones[0];
+try {
+  timezone = timezones.find(option => option.id === localStorage.getItem(timezonePreference)) || timezone;
+} catch {
+  // The preference still works until reload if browser storage is unavailable.
+}
+const timeFormatters = new Map();
+window.a16tTime = {
+  get label() { return timezone.label; },
+  format(value, options) {
+    const key = JSON.stringify(options);
+    if (!timeFormatters.has(key)) {
+      timeFormatters.set(key, new Intl.DateTimeFormat("en-GB", {...options, timeZone: timezone.zone}));
+    }
+    return timeFormatters.get(key).format(value);
+  }
+};
+const clockOptions = {hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23"};
+const dateOptions = {day: "2-digit", month: "short", year: "numeric"};
+const clockTime = value => window.a16tTime.format(value, clockOptions) + " " + timezone.label;
+const calendarDate = value => window.a16tTime.format(value, dateOptions);
 const marineChannelOrder = new Intl.Collator("en", {numeric: true});
 const channelNodes = new Map();
 const clipNodes = new Map();
@@ -21,6 +42,11 @@ let initialRequestFailed = false;
 let streamReady = false;
 let revision = 0;
 let timelineVisible = false;
+let openedHeader = null;
+let serverConfig = null;
+let loadingServerConfig = false;
+let profileStatus = "";
+let pendingProfile = null;
 
 function element(tag, name, content) {
   const node = document.createElement(tag);
@@ -50,7 +76,7 @@ function sampleAge(ms) {
   if (seconds < 1) return "Now";
   if (seconds < 60) return Math.floor(seconds) + " s ago";
   if (seconds < 3600) return Math.floor(seconds / 60) + " min ago";
-  return utcDate.format(ms) + " " + utcClock.format(ms) + " UTC";
+  return calendarDate(ms) + " " + clockTime(ms);
 }
 
 function note(node, message) {
@@ -58,15 +84,187 @@ function note(node, message) {
   node.hidden = !message;
 }
 
+function headerOption(label, description, selected, choose) {
+  const button = element("button", "mast-option");
+  button.type = "button";
+  button.setAttribute("aria-pressed", String(selected));
+  const text = element("span");
+  text.append(element("span", "mast-option-title", label));
+  if (description) text.append(element("span", "mast-option-description", description));
+  button.append(text);
+  button.addEventListener("click", choose);
+  return button;
+}
+
+function renderProfileOptions() {
+  const active = snapshot?.profile;
+  const choices = serverConfig?.profiles || [];
+  const buttons = choices.map(({id, label}) => {
+    const button = headerOption(label || id, label && label !== id ? id : "", id === active,
+      () => selectProfile(id, label || id));
+    button.disabled = !serverConfig.profile_switching || Boolean(pendingProfile);
+    return button;
+  });
+  $("profile-options").replaceChildren(...buttons);
+  const message = serverConfig && (!choices.length || !serverConfig.profile_switching)
+    ? (choices.length ? "This receiver selects its profile at startup." : "No receiver profiles are available.")
+    : "";
+  note($("profile-note"), profileStatus || message);
+}
+
+async function selectProfile(id, label) {
+  if (id === snapshot?.profile) {
+    closeHeader(true);
+    return;
+  }
+  if (pendingProfile) return;
+  const request = {id};
+  pendingProfile = request;
+  profileStatus = "Switching to " + label + "…";
+  if (openedHeader?.panel === $("profile-panel")) openedHeader.panel.focus();
+  renderProfileOptions();
+  try {
+    const response = await fetch("/api/profile", {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({id}),
+      signal: AbortSignal.timeout(5000)
+    });
+    if (!response.ok) throw Error("Profile switch unavailable");
+    setTimeout(() => {
+      if (pendingProfile !== request) return;
+      pendingProfile = null;
+      profileStatus = "Still waiting for " + label + ". The receiver has not reported the change.";
+      renderProfileOptions();
+    }, 30000);
+  } catch {
+    if (pendingProfile !== request) return;
+    pendingProfile = null;
+    profileStatus = "Could not switch to " + label + ". Check the connection and try again.";
+    renderProfileOptions();
+  }
+}
+
+function renderConnectionDetails() {
+  const server = serverConfig?.server;
+  setText($("connection-host"), server?.hostname || "Unavailable");
+  setText($("connection-address"), server?.address || "Unavailable");
+  setText($("connection-device"), server?.device || "Unavailable");
+  setText($("connection-bind"), server?.bind || "Unavailable");
+  setText($("connection-endpoint"), location.origin);
+  const connected = snapshot && Date.now() - lastUpdate <= 10000;
+  setText($("connection-transport"), connected ? (streamReady ? "Server-sent events" : "HTTP polling") : "Unavailable");
+  setText($("connection-receiver"), [snapshot?.source, snapshot?.receiver].filter(Boolean).join(" · ") || "Unavailable");
+}
+
+async function loadServerConfig() {
+  if (serverConfig || loadingServerConfig) return;
+  profileStatus = "Loading profiles…";
+  renderProfileOptions();
+  loadingServerConfig = true;
+  try {
+    const response = await fetch("/api/config", {cache: "no-store", signal: AbortSignal.timeout(4000)});
+    if (!response.ok) throw Error("Server configuration unavailable");
+    serverConfig = await response.json();
+    if (!Array.isArray(serverConfig?.profiles)) {
+      serverConfig = null;
+      throw Error("Invalid server configuration");
+    }
+    profileStatus = "";
+  } catch {
+    profileStatus = "Profiles are unavailable. Open the picker again to retry.";
+  } finally {
+    loadingServerConfig = false;
+    renderProfileOptions();
+    if (openedHeader?.panel === $("profile-panel") && document.activeElement === openedHeader.panel) {
+      focusHeaderPanel(openedHeader.panel);
+    }
+    renderConnectionDetails();
+  }
+}
+
+function chooseTimezone(option) {
+  if (timezone !== option) {
+    timezone = option;
+    timeFormatters.clear();
+    try {
+      localStorage.setItem(timezonePreference, option.id);
+    } catch {
+      // The current page keeps the choice without storage.
+    }
+    updateClock();
+    if (!timelineVisible && snapshot) {
+      renderChannels();
+      renderClips();
+    }
+    window.dispatchEvent(new Event("a16t-timezone-change"));
+    renderTimezoneOptions();
+  }
+  closeHeader(true);
+}
+
+function renderTimezoneOptions() {
+  $("clock-options").replaceChildren(...timezones.map(option =>
+    headerOption(option.label, option.description, timezone === option, () => chooseTimezone(option))));
+}
+
+function focusHeaderPanel(panel) {
+  const target = panel.querySelector("button[aria-pressed=true]:not(:disabled)")
+    || panel.querySelector("button:not(:disabled)") || panel;
+  target.focus({preventScroll: true});
+}
+
+function closeHeader(restoreFocus = false) {
+  if (!openedHeader) return;
+  const {trigger, panel} = openedHeader;
+  openedHeader = null;
+  trigger.setAttribute("aria-expanded", "false");
+  panel.hidden = true;
+  if (restoreFocus) trigger.focus();
+}
+
+function setupHeader() {
+  renderTimezoneOptions();
+  for (const trigger of document.querySelectorAll(".mast-trigger")) {
+    const panel = $(trigger.getAttribute("aria-controls"));
+    trigger.addEventListener("click", () => {
+      if (openedHeader?.trigger === trigger) {
+        closeHeader(true);
+        return;
+      }
+      closeHeader();
+      openedHeader = {trigger, panel};
+      trigger.setAttribute("aria-expanded", "true");
+      panel.hidden = false;
+      if (panel.id === "connection-panel") renderConnectionDetails();
+      if (panel.id !== "clock-panel") loadServerConfig();
+      focusHeaderPanel(panel);
+    });
+  }
+  document.addEventListener("click", event => {
+    if (openedHeader && !openedHeader.trigger.parentElement.contains(event.target)) closeHeader();
+  });
+  document.addEventListener("focusin", event => {
+    if (openedHeader && !openedHeader.trigger.parentElement.contains(event.target)) closeHeader();
+  });
+  document.addEventListener("keydown", event => {
+    if (event.key !== "Escape" || !openedHeader) return;
+    event.preventDefault();
+    closeHeader(true);
+  });
+}
+
 function applySnapshot(state) {
   if (!state || !Array.isArray(state.channels) || !Array.isArray(state.clips)) {
     throw Error("Invalid receiver snapshot");
   }
+  const profileChanged = snapshot?.profile !== state.profile;
   snapshot = state.profile === "marine-vhf"
     ? {...state, channels: [...state.channels].sort((a, b) => marineChannelOrder.compare(a.id, b.id))}
     : state;
   lastUpdate = Date.now();
   revision++;
+  if (profileChanged && liveChannel !== null) stopListening();
   if (!state.channels.some(channel => channel.id === selectedChannel)) {
     stopListening();
     selectedChannel = state.channels[0]?.id ?? null;
@@ -74,10 +272,15 @@ function applySnapshot(state) {
   if (!state.clips.some(clip => clip.id === selectedClip)) {
     selectedClip = state.clips[0]?.id ?? null;
   }
-  const profile = $("profile");
-  const profileName = state.profile || "—";
-  setText(profile, profileName);
-  if (profile.title !== profileName) profile.title = profileName;
+  setText($("profile"), state.profile || "—");
+  if (pendingProfile && pendingProfile.id === state.profile) {
+    pendingProfile = null;
+    if (openedHeader?.panel === $("profile-panel")) closeHeader(true);
+  }
+  if (profileChanged) {
+    if (!pendingProfile && serverConfig) profileStatus = "";
+    renderProfileOptions();
+  }
   const archiveWarning = [];
   if (state.dropped_clips) archiveWarning.push(state.dropped_clips + (state.dropped_clips === 1 ? " dropped recording" : " dropped recordings"));
   if (state.archive_error) archiveWarning.push(state.archive_error);
@@ -203,7 +406,7 @@ function clipName(clip) {
 
 function updateClip(row, clip) {
   setText(row.label, clipName(clip));
-  const when = utcDate.format(clip.start_ms) + " · " + utcClock.format(clip.start_ms) + " UTC";
+  const when = calendarDate(clip.start_ms) + " · " + clockTime(clip.start_ms);
   setText(row.time, when + (clip.status === "expired" ? " · Audio expired" : ""));
   setText(row.duration, (clip.duration_ms / 1000).toFixed(1) + " s");
   row.button.setAttribute("aria-pressed", String(clip.id === selectedClip));
@@ -240,9 +443,9 @@ function renderClips() {
   }
   const expired = ["expiring", "expired"].includes(item.status);
   note($("clip-info"), item.error || (expired ? "Audio expired under the storage budget." : ""));
-  setText($("clip-title"), clipName(item) + " · " + utcClock.format(item.start_ms) + " UTC");
+  setText($("clip-title"), clipName(item) + " · " + clockTime(item.start_ms));
   setText($("clip-status"), item.status || "");
-  setText($("clip-metadata"), [utcDate.format(item.start_ms), fmtFreq(item.frequency_hz), item.profile, item.source]
+  setText($("clip-metadata"), [calendarDate(item.start_ms), fmtFreq(item.frequency_hz), item.profile, item.source]
     .filter(Boolean).join(" · "));
   const transcription = {
     complete: "No speech transcribed.", disabled: "Transcription disabled for this recording.",
@@ -361,6 +564,7 @@ function updateConnection() {
   }
   setText(node, status);
   node.className = status === "Connected" || status === "Polling" ? "good" : "warn";
+  if (openedHeader?.panel === $("connection-panel")) renderConnectionDetails();
 }
 
 async function refresh() {
@@ -413,6 +617,7 @@ function selectView() {
   }
 }
 window.addEventListener("hashchange", selectView);
+setupHeader();
 selectView();
 $("channel-filter").addEventListener("input", renderChannels);
 $("listen").addEventListener("click", listen);
@@ -438,8 +643,14 @@ if ("EventSource" in window) {
   events.onmessage = receive;
   events.onerror = () => { streamReady = false; updateConnection(); refresh(); };
 }
+function updateClock() {
+  const now = Date.now();
+  const clock = $("clock");
+  clock.dateTime = new Date(now).toISOString();
+  setText(clock, clockTime(now));
+}
 function tick() {
-  setText($("clock"), utcClock.format(Date.now()) + " UTC");
+  updateClock();
   updateConnection();
   if (!lastUpdate || Date.now() - lastUpdate > 4500) {
     streamReady = false;
