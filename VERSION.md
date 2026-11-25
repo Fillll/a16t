@@ -4,7 +4,7 @@
 
 The compact shared header opens the installed profile picker, connection details, and a choice of UTC, local or Pacific time.
 
-Drag the Timeline ruler to browse earlier hours, then choose Back to now to return live. The transmission panel scrolls through the selected channel's archive with the selected clip highlighted and its audio and full transcript inline.
+Drag the Timeline ruler to browse earlier hours, then choose Back to now to return live. Click anywhere on a channel row to open its archive newest first. Click a transmission to highlight it and show its audio and full transcript inline.
 
 The Marine VHF Watchboard and Timeline show Channel 16 between 15 and 17, with a red label.
 

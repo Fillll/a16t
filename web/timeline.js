@@ -68,9 +68,9 @@ window.a16tTimeline = (() => {
             <section class="tl-transcript"><h3>Transcript</h3><p></p></section>
           </div></div>
           <div class="tl-conversations" role="region" aria-label="Channel transmissions" tabindex="0" hidden>
-            <button type="button" class="tl-page tl-older" hidden>Older transmissions</button>
-            <ol class="tl-conversation-list"></ol>
             <button type="button" class="tl-page tl-newer" hidden>Newer transmissions</button>
+            <ol class="tl-conversation-list"></ol>
+            <button type="button" class="tl-page tl-older" hidden>Older transmissions</button>
           </div>
         </div>
       </aside>
@@ -349,11 +349,16 @@ window.a16tTimeline = (() => {
   list.addEventListener("focusout", hideTip);
   list.addEventListener("click", event => {
     const mark = event.detail ? pointerMark(event) : event.target.closest(".tl-mark,.tl-live");
-    if (!mark) return;
-    const item = transmission(mark);
-    if (!item) return;
-    if (item.live) inspect(item.row, null, item.clip.start_ms);
-    else inspect(item.row, item.clip.id);
+    if (mark) {
+      const item = transmission(mark);
+      if (!item) return;
+      if (item.live) inspect(item.row, null, item.clip.start_ms);
+      else inspect(item.row, item.clip.id);
+    } else {
+      const row = rows.get(event.target.closest(".tl-row")?.dataset.channel);
+      if (!row) return;
+      inspect(row);
+    }
     revealInspector(event);
   });
   document.addEventListener("keydown", event => { if (event.key === "Escape") hideTip(); });
@@ -472,7 +477,7 @@ window.a16tTimeline = (() => {
       if (!ids.has(id)) { node.remove(); channelRows.delete(id); }
     }
     let next = conversationList.firstElementChild;
-    for (const item of items) {
+    for (const item of [...items].reverse()) {
       let node = channelRows.get(item.id);
       if (!node) {
         node = document.createElement("li");
@@ -553,11 +558,11 @@ window.a16tTimeline = (() => {
     try {
       const data = await fetchHistory(channel, id, controller.signal);
       if (pageRequest !== controller) return;
-      const anchor = conversationList.firstElementChild;
+      const anchor = direction === "newer" ? conversationList.firstElementChild : null;
       const top = anchor?.getBoundingClientRect().top;
       mergeConversation(data.window);
       renderConversations();
-      if (direction === "older" && anchor?.isConnected) {
+      if (anchor?.isConnected) {
         conversations.scrollTop += anchor.getBoundingClientRect().top - top;
         lastScroll = conversations.scrollTop;
       }
@@ -577,8 +582,8 @@ window.a16tTimeline = (() => {
     const top = conversations.scrollTop;
     const delta = top - lastScroll;
     lastScroll = top;
-    if (delta < 0 && top < 45) pageHistory("older");
-    if (delta > 0 && conversations.scrollHeight - conversations.clientHeight - top < 45) pageHistory("newer");
+    if (delta < 0 && top < 45) pageHistory("newer");
+    if (delta > 0 && conversations.scrollHeight - conversations.clientHeight - top < 45) pageHistory("older");
   }, {passive: true});
 
   function resetConversation() {
@@ -671,10 +676,6 @@ window.a16tTimeline = (() => {
       <div class="tl-lane"><button type="button" class="tl-live" hidden></button></div>`;
     const row = {node, channel, clips: new Map(), marks: new Map(), name: node.querySelector("button"),
       lane: node.querySelector(".tl-lane"), live: node.querySelector(".tl-live")};
-    row.name.addEventListener("click", event => {
-      inspect(row);
-      revealInspector(event);
-    });
     return row;
   }
 

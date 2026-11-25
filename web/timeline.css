@@ -52,7 +52,7 @@
 .tl-scale span:nth-child(3) { left: 50%; }
 .tl-scale span:nth-child(4) { left: 75%; }
 .tl-scale span:last-child { right: 0; transform: translateY(-50%); color: var(--text); }
-.tl-row { height: var(--rail-height); }
+.tl-row { height: var(--rail-height); cursor: pointer; }
 .tl-row:hover, .tl-row:focus-within { background: var(--surface); }
 .tl-row[data-selected=true] { background: var(--selection); }
 .tl-channel { align-self: center; min-width: 0; padding-left: 2px; }
@@ -139,8 +139,8 @@
   background: var(--surface); color: var(--soft); font: 11px/1.4 var(--mono);
 }
 .tl-page:hover:enabled { color: var(--text); }
-.tl-older { border-block-end: 1px solid var(--line); }
-.tl-newer { border-block-start: 1px solid var(--line); }
+.tl-newer { border-block-end: 1px solid var(--line); }
+.tl-older { border-block-start: 1px solid var(--line); }
 .tl-inspector audio { display: block; width: 100%; min-width: 0; margin-top: 12px; height: 36px; }
 .tl-audio-note { margin-top: 8px; color: var(--warn); }
 .tl-transcript { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
